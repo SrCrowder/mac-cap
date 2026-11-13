@@ -370,7 +370,10 @@ final class ScrollStitcherTests: XCTestCase {
         XCTAssertEqual(stitcher.add(try frame(of: page, top: 0, height: 300)), .unchanged)
         XCTAssertEqual(stitcher.add(try frame(of: page, top: 120, height: 300)), .appended(rows: 120))
         XCTAssertEqual(stitcher.add(try frame(of: page, top: 310, height: 300)), .appended(rows: 190))
-        XCTAssertEqual(stitcher.add(try frame(of: page, top: 600, height: 300)), .appended(rows: 290 - 0))
+        // Too big a jump (little overlap) can't be matched safely.
+        XCTAssertEqual(stitcher.add(try frame(of: page, top: 600, height: 300)), .lost)
+        XCTAssertEqual(stitcher.add(try frame(of: page, top: 560, height: 300)), .appended(rows: 250))
+        XCTAssertEqual(stitcher.add(try frame(of: page, top: 600, height: 300)), .appended(rows: 40))
         XCTAssertEqual(stitcher.height, 900)
 
         let result = try XCTUnwrap(stitcher.compose())
