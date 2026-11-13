@@ -35,7 +35,9 @@ final class AnnotationImage {
               let filter = CIFilter(name: "CIPixellate") else { return nil }
         let input = CIImage(cgImage: cgImage)
         let block = AnnotationGeometry.pixelateBlock(for: pixelSize, scale: scale)
-        filter.setValue(input.clampedToExtent(), forKey: kCIInputImageKey)
+        // CIPixellate samples one point per block; blurring first makes each block the area's average.
+        let averaged = input.clampedToExtent().applyingFilter("CIBoxBlur", parameters: [kCIInputRadiusKey: block / 2])
+        filter.setValue(averaged, forKey: kCIInputImageKey)
         filter.setValue(block, forKey: kCIInputScaleKey)
         // Random grid offset so the block layout can't be predicted by de-pixelation tools.
         filter.setValue(CIVector(x: CGFloat.random(in: 0..<block), y: CGFloat.random(in: 0..<block)),
