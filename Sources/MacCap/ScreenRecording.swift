@@ -14,9 +14,9 @@ enum RecordingError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .unsupported: return "Esta función necesita macOS 12.3 o posterior."
-        case .noDisplay: return "No se encontró la pantalla de la zona seleccionada."
-        case .noFrames: return "No se grabó ningún fotograma (la zona no cambió o falta el permiso de grabación)."
+        case .unsupported: return L("Esta función necesita macOS 12.3 o posterior.", "This feature needs macOS 12.3 or later.")
+        case .noDisplay: return L("No se encontró la pantalla de la zona seleccionada.", "The display of the selected area was not found.")
+        case .noFrames: return L("No se grabó ningún fotograma (la zona no cambió o falta el permiso de grabación).", "No frames were recorded (the area didn't change or screen recording permission is missing).")
         case .writer(let message): return message
         }
     }
@@ -142,10 +142,10 @@ final class RegionRecorder {
             AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: max(2_000_000, Int(size.width * size.height) * 4)]
         ])
         input.expectsMediaDataInRealTime = true
-        guard writer.canAdd(input) else { throw RecordingError.writer("No se pudo preparar el vídeo.") }
+        guard writer.canAdd(input) else { throw RecordingError.writer(L("No se pudo preparar el vídeo.", "Could not prepare the video.")) }
         writer.add(input)
         guard writer.startWriting() else {
-            throw writer.error ?? RecordingError.writer("No se pudo empezar a escribir el vídeo.")
+            throw writer.error ?? RecordingError.writer(L("No se pudo empezar a escribir el vídeo.", "Could not start writing the video."))
         }
         // Frames arrive on the stream queue; set up there to avoid races.
         stream.queue.sync {
@@ -178,7 +178,7 @@ final class RegionRecorder {
             writer.finishWriting {
                 let result: Result<URL, Error> = writer.status == .completed
                     ? .success(self.outputURL)
-                    : .failure(writer.error ?? RecordingError.writer("No se pudo guardar el vídeo."))
+                    : .failure(writer.error ?? RecordingError.writer(L("No se pudo guardar el vídeo.", "Could not save the video.")))
                 DispatchQueue.main.async { completion(result) }
             }
         }
@@ -202,7 +202,7 @@ enum GIFExporter {
         try? FileManager.default.removeItem(at: output)
         guard let destination = CGImageDestinationCreateWithURL(output as CFURL, "com.compuserve.gif" as CFString,
                                                                 count, nil) else {
-            throw RecordingError.writer("No se pudo crear el GIF.")
+            throw RecordingError.writer(L("No se pudo crear el GIF.", "Could not create the GIF."))
         }
         CGImageDestinationSetProperties(destination, [
             kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]
@@ -218,7 +218,7 @@ enum GIFExporter {
             CGImageDestinationAddImage(destination, frame, frameProperties)
         }
         guard last != nil, CGImageDestinationFinalize(destination) else {
-            throw RecordingError.writer("No se pudo crear el GIF.")
+            throw RecordingError.writer(L("No se pudo crear el GIF.", "Could not create the GIF."))
         }
     }
 }

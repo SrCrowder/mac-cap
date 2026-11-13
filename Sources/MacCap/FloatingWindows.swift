@@ -127,11 +127,11 @@ private final class ThumbnailView: NSView, NSDraggingSource {
         layer?.masksToBounds = true
         layer?.borderWidth = 1
         layer?.borderColor = NSColor.white.withAlphaComponent(0.6).cgColor
-        toolTip = "Clic: anotar · Arrastrar: soltar en otra app · Deslizar a la derecha: descartar"
+        toolTip = L("Clic: anotar · Arrastrar: soltar en otra app · Deslizar a la derecha: descartar", "Click: annotate · Drag: drop into another app · Swipe right: dismiss")
 
-        let close = overlayButton("xmark", "Descartar", self, #selector(closeTapped))
-        let pin = overlayButton("pin.fill", "Fijar en pantalla", self, #selector(pinTapped))
-        let copy = overlayButton("doc.on.doc", "Copiar", self, #selector(copyTapped))
+        let close = overlayButton("xmark", L("Descartar", "Discard"), self, #selector(closeTapped))
+        let pin = overlayButton("pin.fill", L("Fijar en pantalla", "Pin on screen"), self, #selector(pinTapped))
+        let copy = overlayButton("doc.on.doc", L("Copiar", "Copy"), self, #selector(copyTapped))
         buttons = [close, pin, copy]
         buttons.forEach { $0.isHidden = true; addSubview($0) }
         NSLayoutConstraint.activate([
@@ -245,9 +245,9 @@ final class PinnedImageWindow: NSPanel {
         view.closeAction = { [weak self] in self?.close() }
         contentView = view
         let menu = NSMenu()
-        menu.addItem(withTitle: "Copiar", action: #selector(copyImage), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "Anotar…", action: #selector(annotateImage), keyEquivalent: "").target = self
-        let opacity = NSMenuItem(title: "Opacidad", action: nil, keyEquivalent: "")
+        menu.addItem(withTitle: L("Copiar", "Copy"), action: #selector(copyImage), keyEquivalent: "").target = self
+        menu.addItem(withTitle: L("Anotar…", "Annotate…"), action: #selector(annotateImage), keyEquivalent: "").target = self
+        let opacity = NSMenuItem(title: L("Opacidad", "Opacity"), action: nil, keyEquivalent: "")
         let opacityMenu = NSMenu()
         for value in [100, 75, 50, 25] {
             let entry = opacityMenu.addItem(withTitle: "\(value) %", action: #selector(setOpacity(_:)), keyEquivalent: "")
@@ -257,7 +257,7 @@ final class PinnedImageWindow: NSPanel {
         opacity.submenu = opacityMenu
         menu.addItem(opacity)
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Cerrar", action: #selector(closeWindow), keyEquivalent: "").target = self
+        menu.addItem(withTitle: L("Cerrar", "Close"), action: #selector(closeWindow), keyEquivalent: "").target = self
         view.menu = menu
     }
 
@@ -292,14 +292,14 @@ private final class PinnedImageView: NSView {
         layer?.masksToBounds = true
         layer?.borderWidth = 1
         layer?.borderColor = NSColor.black.withAlphaComponent(0.25).cgColor
-        closeButton = overlayButton("xmark", "Cerrar (Esc)", self, #selector(closeTapped))
+        closeButton = overlayButton("xmark", L("Cerrar (Esc)", "Close (Esc)"), self, #selector(closeTapped))
         closeButton.isHidden = true
         addSubview(closeButton)
         NSLayoutConstraint.activate([
             closeButton.topAnchor.constraint(equalTo: topAnchor, constant: 6),
             closeButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6)
         ])
-        toolTip = "Arrastra para mover · Bordes para redimensionar · Clic derecho: opciones"
+        toolTip = L("Arrastra para mover · Bordes para redimensionar · Clic derecho: opciones", "Drag to move · Edges to resize · Right-click: options")
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }

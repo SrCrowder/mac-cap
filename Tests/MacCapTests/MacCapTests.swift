@@ -20,6 +20,25 @@ final class CaptureOptionsTests: XCTestCase {
 }
 
 final class NamingTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        UserDefaults.standard.set("es", forKey: Localization.key)
+    }
+
+    override func tearDown() {
+        UserDefaults.standard.removeObject(forKey: Localization.key)
+        super.tearDown()
+    }
+
+    func testEnglishFileName() {
+        UserDefaults.standard.set("en", forKey: Localization.key)
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        XCTAssertEqual(CaptureNaming.fileName(for: Date(timeIntervalSince1970: 1_700_000_000), calendar: calendar),
+                       "Screenshot 2023-11-14 at 22.13.20.png")
+        XCTAssertEqual(L("Hola", "Hello"), "Hello")
+    }
+
     func testFileName() {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC")!

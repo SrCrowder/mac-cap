@@ -56,7 +56,7 @@ final class ShortcutField: NSView {
         (recording ? NSColor.controlAccentColor : NSColor.separatorColor).setStroke()
         box.lineWidth = 1
         box.stroke()
-        let text = recording ? "Pulsa el atajo…" : (shortcut?.displayString ?? "—")
+        let text = recording ? L("Pulsa el atajo…", "Press the shortcut…") : (shortcut?.displayString ?? "—")
         let label = NSAttributedString(string: text, attributes: [
             .font: NSFont.systemFont(ofSize: 13, weight: recording ? .regular : .medium),
             .foregroundColor: recording || shortcut == nil ? NSColor.secondaryLabelColor : NSColor.labelColor
@@ -118,7 +118,7 @@ final class ShortcutsWindowController: NSWindowController, NSWindowDelegate {
     init() {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 470, height: 520),
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        window.title = "Atajos de teclado"
+        window.title = L("Atajos de teclado", "Keyboard shortcuts")
         window.isReleasedWhenClosed = false
         super.init(window: window)
         window.delegate = self
@@ -130,7 +130,7 @@ final class ShortcutsWindowController: NSWindowController, NSWindowDelegate {
 
     private func build(in content: NSView) {
         let intro = NSTextField(wrappingLabelWithString:
-            "Haz clic en un atajo y pulsa la nueva combinación (con ⌘, ⌥ o ⌃). ⌫ lo quita, Esc cancela.")
+            L("Haz clic en un atajo y pulsa la nueva combinación (con ⌘, ⌥ o ⌃). ⌫ lo quita, Esc cancela.", "Click a shortcut and press the new combination (with ⌘, ⌥ or ⌃). ⌫ removes it, Esc cancels."))
         intro.textColor = .secondaryLabelColor
         let grid = NSGridView()
         grid.rowSpacing = 8
@@ -142,7 +142,7 @@ final class ShortcutsWindowController: NSWindowController, NSWindowDelegate {
             field.shortcut = shortcuts[action]
             field.onChange = { [weak self] shortcut in self?.assign(shortcut, to: action) }
             field.onInvalid = { [weak self] in
-                self?.message.stringValue = "Usa al menos ⌘, ⌥ o ⌃ (o una tecla de función)."
+                self?.message.stringValue = L("Usa al menos ⌘, ⌥ o ⌃ (o una tecla de función).", "Use at least ⌘, ⌥ or ⌃ (or a function key).")
             }
             fields[action] = field
             grid.addRow(with: [label, field])
@@ -151,7 +151,7 @@ final class ShortcutsWindowController: NSWindowController, NSWindowDelegate {
         message.textColor = .systemOrange
         message.lineBreakMode = .byWordWrapping
         message.maximumNumberOfLines = 2
-        let reset = NSButton(title: "Restablecer predeterminados", target: self, action: #selector(resetDefaults))
+        let reset = NSButton(title: L("Restablecer predeterminados", "Restore defaults"), target: self, action: #selector(resetDefaults))
         let stack = NSStackView(views: [intro, grid, message, reset])
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -177,7 +177,7 @@ final class ShortcutsWindowController: NSWindowController, NSWindowDelegate {
         for (other, field) in fields {
             field.shortcut = current[other]
             if other != action, previous[other] != nil, current[other] == nil {
-                message.stringValue = "Se ha quitado de «\(other.title)», que usaba la misma combinación."
+                message.stringValue = L("Se ha quitado de «\(other.title)», que usaba la misma combinación.", "Removed from “\(other.title)”, which used the same combination.")
             }
         }
     }

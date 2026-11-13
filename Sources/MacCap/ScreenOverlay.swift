@@ -36,7 +36,7 @@ final class ScreenOverlay: NSObject {
         switch overlay.mode {
         case .ruler:
             isRuler = true
-            prompt = "Arrastra para medir · Mayús: solo horizontal/vertical · Esc para salir"
+            prompt = L("Arrastra para medir · Mayús: solo horizontal/vertical · Esc para salir", "Drag to measure · Shift: horizontal/vertical only · Esc to exit")
         case .select(let text, _):
             isRuler = false
             prompt = text

@@ -52,6 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var scrollScale: CGFloat = 2
     private var captureControls: CaptureControls?
     private var stopItem: NSMenuItem!
+    private var languageItems: [NSMenuItem] = []
     private lazy var thumbnail = CaptureThumbnail(actions: .init(
         annotate: { [weak self] url in
             if Self.isImageFile(url) { self?.annotateImage(at: url) } else { NSWorkspace.shared.open(url) }
@@ -66,7 +67,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         installMainMenu()
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         setIcon("camera.viewfinder")
-        statusItem.button?.toolTip = "MacCap – capturas de pantalla"
+        statusItem.button?.toolTip = L("MacCap – capturas de pantalla", "MacCap – screenshots")
         statusItem.menu = buildMenu()
         applyHotKeys()
         if CGPreflightScreenCaptureAccess() {
@@ -83,67 +84,67 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.delegate = self
         menu.autoenablesItems = false
 
-        stopItem = item("■ Detener", #selector(stopActiveCapture), symbol: "stop.circle")
+        stopItem = item(L("■ Detener", "■ Stop"), #selector(stopActiveCapture), symbol: "stop.circle")
         menu.addItem(stopItem)
-        permissionItem = item("⚠️ Conceder permiso de grabación de pantalla…", #selector(openPermissionSettings))
+        permissionItem = item(L("⚠️ Conceder permiso de grabación de pantalla…", "⚠️ Grant screen recording permission…"), #selector(openPermissionSettings))
         permissionSeparator = .separator()
         menu.addItem(permissionItem)
         menu.addItem(permissionSeparator)
 
-        menu.addItem(header("Copiar al portapapeles"))
-        menu.addItem(item("Zona…", #selector(copySelection), action: .copyZone, symbol: "rectangle.dashed"))
-        menu.addItem(item("Ventana…", #selector(copyWindow), action: .copyWindow, symbol: "macwindow"))
-        menu.addItem(item("Pantalla completa", #selector(copyScreen), action: .copyScreen, symbol: "display"))
+        menu.addItem(header(L("Copiar al portapapeles", "Copy to clipboard")))
+        menu.addItem(item(L("Zona…", "Area…"), #selector(copySelection), action: .copyZone, symbol: "rectangle.dashed"))
+        menu.addItem(item(L("Ventana…", "Window…"), #selector(copyWindow), action: .copyWindow, symbol: "macwindow"))
+        menu.addItem(item(L("Pantalla completa", "Full screen"), #selector(copyScreen), action: .copyScreen, symbol: "display"))
         menu.addItem(.separator())
 
-        menu.addItem(header("Guardar en archivo"))
-        menu.addItem(item("Zona…", #selector(saveSelection), action: .saveZone, symbol: "rectangle.dashed"))
-        menu.addItem(item("Ventana…", #selector(saveWindow), symbol: "macwindow"))
-        menu.addItem(item("Pantalla completa", #selector(saveScreen), symbol: "display"))
+        menu.addItem(header(L("Guardar en archivo", "Save to file")))
+        menu.addItem(item(L("Zona…", "Area…"), #selector(saveSelection), action: .saveZone, symbol: "rectangle.dashed"))
+        menu.addItem(item(L("Ventana…", "Window…"), #selector(saveWindow), symbol: "macwindow"))
+        menu.addItem(item(L("Pantalla completa", "Full screen"), #selector(saveScreen), symbol: "display"))
         menu.addItem(.separator())
 
-        menu.addItem(header("Anotar (formas, flechas, texto…)"))
-        menu.addItem(item("Zona y anotar…", #selector(annotateSelection), action: .annotateZone, symbol: "pencil.and.outline"))
-        menu.addItem(item("Ventana y anotar…", #selector(annotateWindow), symbol: "macwindow.badge.plus"))
-        menu.addItem(item("Pantalla completa y anotar", #selector(annotateScreen), symbol: "display"))
-        menu.addItem(item("Anotar imagen del portapapeles", #selector(annotateClipboard), symbol: "doc.on.clipboard"))
-        menu.addItem(item("Anotar imagen de un archivo…", #selector(annotateFile), symbol: "photo"))
+        menu.addItem(header(L("Anotar (formas, flechas, texto…)", "Annotate (shapes, arrows, text…)")))
+        menu.addItem(item(L("Zona y anotar…", "Area and annotate…"), #selector(annotateSelection), action: .annotateZone, symbol: "pencil.and.outline"))
+        menu.addItem(item(L("Ventana y anotar…", "Window and annotate…"), #selector(annotateWindow), symbol: "macwindow.badge.plus"))
+        menu.addItem(item(L("Pantalla completa y anotar", "Full screen and annotate"), #selector(annotateScreen), symbol: "display"))
+        menu.addItem(item(L("Anotar imagen del portapapeles", "Annotate clipboard image"), #selector(annotateClipboard), symbol: "doc.on.clipboard"))
+        menu.addItem(item(L("Anotar imagen de un archivo…", "Annotate image from a file…"), #selector(annotateFile), symbol: "photo"))
         menu.addItem(.separator())
 
-        menu.addItem(header("Extras"))
-        menu.addItem(item("Copiar texto de una zona (OCR)…", #selector(recognizeText), action: .ocr, symbol: "text.viewfinder"))
-        menu.addItem(item("Leer código QR de una zona…", #selector(readQRCode), action: .qr, symbol: "qrcode.viewfinder"))
-        menu.addItem(item("Fijar zona en pantalla…", #selector(pinSelection), action: .pinZone, symbol: "pin"))
-        menu.addItem(item("Cuentagotas (copiar color)…", #selector(pickColor), action: .colorPicker, symbol: "eyedropper"))
+        menu.addItem(header(L("Extras", "Extras")))
+        menu.addItem(item(L("Copiar texto de una zona (OCR)…", "Copy text from an area (OCR)…"), #selector(recognizeText), action: .ocr, symbol: "text.viewfinder"))
+        menu.addItem(item(L("Leer código QR de una zona…", "Read QR code from an area…"), #selector(readQRCode), action: .qr, symbol: "qrcode.viewfinder"))
+        menu.addItem(item(L("Fijar zona en pantalla…", "Pin area on screen…"), #selector(pinSelection), action: .pinZone, symbol: "pin"))
+        menu.addItem(item(L("Cuentagotas (copiar color)…", "Color picker (copy color)…"), #selector(pickColor), action: .colorPicker, symbol: "eyedropper"))
         menu.addItem(.separator())
 
-        menu.addItem(header("Grabar y medir"))
-        menu.addItem(item("Grabar zona en vídeo (MP4)…", #selector(recordVideo), action: .recordVideo, symbol: "record.circle"))
-        menu.addItem(item("Grabar zona como GIF…", #selector(recordGIF), action: .recordGIF, symbol: "film"))
-        menu.addItem(item("Captura con scroll…", #selector(startScrollCapture), action: .scrollCapture, symbol: "arrow.down.doc"))
-        menu.addItem(item("Regla…", #selector(showRuler), action: .ruler, symbol: "ruler"))
-        menu.addItem(item("Herramienta nativa de macOS…", #selector(openNativeToolbar), symbol: "camera.aperture"))
+        menu.addItem(header(L("Grabar y medir", "Record and measure")))
+        menu.addItem(item(L("Grabar zona en vídeo (MP4)…", "Record area as video (MP4)…"), #selector(recordVideo), action: .recordVideo, symbol: "record.circle"))
+        menu.addItem(item(L("Grabar zona como GIF…", "Record area as GIF…"), #selector(recordGIF), action: .recordGIF, symbol: "film"))
+        menu.addItem(item(L("Captura con scroll…", "Scrolling capture…"), #selector(startScrollCapture), action: .scrollCapture, symbol: "arrow.down.doc"))
+        menu.addItem(item(L("Regla…", "Ruler…"), #selector(showRuler), action: .ruler, symbol: "ruler"))
+        menu.addItem(item(L("Herramienta nativa de macOS…", "Native macOS tool…"), #selector(openNativeToolbar), symbol: "camera.aperture"))
         menu.addItem(.separator())
-        menu.addItem(item("Abrir carpeta de capturas", #selector(openSaveFolder), symbol: "folder"))
-        let recents = NSMenuItem(title: "Recientes", action: nil, keyEquivalent: "")
+        menu.addItem(item(L("Abrir carpeta de capturas", "Open screenshots folder"), #selector(openSaveFolder), symbol: "folder"))
+        let recents = NSMenuItem(title: L("Recientes", "Recent"), action: nil, keyEquivalent: "")
         recents.image = NSImage(systemSymbolName: "clock.arrow.circlepath", accessibilityDescription: nil)
         recents.submenu = recentsMenu
         menu.addItem(recents)
         menu.addItem(.separator())
 
-        let options = NSMenuItem(title: "Opciones", action: nil, keyEquivalent: "")
+        let options = NSMenuItem(title: L("Opciones", "Options"), action: nil, keyEquivalent: "")
         options.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: nil)
         options.submenu = buildOptionsMenu()
         menu.addItem(options)
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
         menu.addItem(header("MacCap \(version)"))
-        let check = NSMenuItem(title: "Buscar actualizaciones…", action: #selector(Updater.checkForUpdates(_:)), keyEquivalent: "")
+        let check = NSMenuItem(title: L("Buscar actualizaciones…", "Check for updates…"), action: #selector(Updater.checkForUpdates(_:)), keyEquivalent: "")
         check.target = updater
         check.image = NSImage(systemSymbolName: "arrow.down.circle", accessibilityDescription: nil)
         check.isHidden = !updater.isAvailable
         menu.addItem(check)
         menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "Salir de MacCap", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        menu.addItem(NSMenuItem(title: L("Salir de MacCap", "Quit MacCap"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         return menu
     }
 
@@ -153,18 +154,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let delayMenu = NSMenu()
         for seconds in [0, 3, 5, 10] {
-            let entry = item(seconds == 0 ? "Sin retardo" : "\(seconds) segundos", #selector(setDelay(_:)))
+            let entry = item(seconds == 0 ? L("Sin retardo", "No delay") : "\(seconds) " + L("segundos", "seconds"), #selector(setDelay(_:)))
             entry.tag = seconds
             delayMenu.addItem(entry)
             delayItems.append(entry)
         }
-        let delay = NSMenuItem(title: "Retardo antes de capturar", action: nil, keyEquivalent: "")
+        let delay = NSMenuItem(title: L("Retardo antes de capturar", "Delay before capture"), action: nil, keyEquivalent: "")
         delay.submenu = delayMenu
         menu.addItem(delay)
 
-        cursorItem = item("Incluir el cursor (pantalla completa)", #selector(toggleCursor))
-        shadowItem = item("Sombra en capturas de ventana", #selector(toggleShadow))
-        soundItem = item("Sonido de obturador", #selector(toggleSound))
+        cursorItem = item(L("Incluir el cursor (pantalla completa)", "Include the pointer (full screen)"), #selector(toggleCursor))
+        shadowItem = item(L("Sombra en capturas de ventana", "Shadow in window captures"), #selector(toggleShadow))
+        soundItem = item(L("Sonido de obturador", "Shutter sound"), #selector(toggleSound))
         [cursorItem, shadowItem, soundItem].forEach { menu.addItem($0) }
         menu.addItem(.separator())
 
@@ -175,27 +176,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             formatMenu.addItem(entry)
             formatItems.append(entry)
         }
-        let formatItem = NSMenuItem(title: "Formato al guardar", action: nil, keyEquivalent: "")
+        let formatItem = NSMenuItem(title: L("Formato al guardar", "Save format"), action: nil, keyEquivalent: "")
         formatItem.submenu = formatMenu
         menu.addItem(formatItem)
         folderItem = item("", #selector(chooseSaveFolder))
-        askItem = item("Preguntar dónde guardar cada vez", #selector(toggleAsk))
+        askItem = item(L("Preguntar dónde guardar cada vez", "Ask where to save every time"), #selector(toggleAsk))
         menu.addItem(folderItem)
         menu.addItem(askItem)
         menu.addItem(.separator())
-        thumbnailItem = item("Mostrar miniatura tras capturar", #selector(toggleThumbnail))
-        historyItem = item("Guardar historial de recientes", #selector(toggleHistory))
+        thumbnailItem = item(L("Mostrar miniatura tras capturar", "Show thumbnail after capture"), #selector(toggleThumbnail))
+        historyItem = item(L("Guardar historial de recientes", "Keep recent captures history"), #selector(toggleHistory))
         menu.addItem(thumbnailItem)
         menu.addItem(historyItem)
         menu.addItem(.separator())
 
-        hotKeysItem = item("Activar atajos de teclado globales", #selector(toggleHotKeys))
+        hotKeysItem = item(L("Activar atajos de teclado globales", "Enable global keyboard shortcuts"), #selector(toggleHotKeys))
         menu.addItem(hotKeysItem)
-        menu.addItem(item("Configurar atajos…", #selector(openShortcuts), symbol: "keyboard"))
-        loginItem = item("Abrir al iniciar sesión", #selector(toggleLoginItem))
+        menu.addItem(item(L("Configurar atajos…", "Configure shortcuts…"), #selector(openShortcuts), symbol: "keyboard"))
+        let languageMenu = NSMenu()
+        for (code, title) in [("", L("Automático (sistema)", "Automatic (system)")), ("es", "Español"), ("en", "English")] {
+            let entry = item(title, #selector(setLanguage(_:)))
+            entry.representedObject = code
+            languageMenu.addItem(entry)
+            languageItems.append(entry)
+        }
+        let languageItem = NSMenuItem(title: L("Idioma", "Language"), action: nil, keyEquivalent: "")
+        languageItem.image = NSImage(systemSymbolName: "globe", accessibilityDescription: nil)
+        languageItem.submenu = languageMenu
+        menu.addItem(languageItem)
+        loginItem = item(L("Abrir al iniciar sesión", "Open at login"), #selector(toggleLoginItem))
         loginItem.isHidden = !LoginItem.isSupported
         menu.addItem(loginItem)
-        autoUpdateItem = item("Instalar actualizaciones sin preguntar", #selector(toggleAutoUpdate))
+        autoUpdateItem = item(L("Instalar actualizaciones sin preguntar", "Install updates without asking"), #selector(toggleAutoUpdate))
         autoUpdateItem.isHidden = !updater.isAvailable
         menu.addItem(autoUpdateItem)
         return menu
@@ -203,7 +215,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func menuWillOpen(_ menu: NSMenu) {
         stopItem.isHidden = activeRecorder == nil && activeScroll == nil
-        stopItem.title = activeScroll != nil ? "■ Terminar captura con scroll" : "■ Detener grabación"
+        stopItem.title = activeScroll != nil ? L("■ Terminar captura con scroll", "■ Finish scrolling capture") : L("■ Detener grabación", "■ Stop recording")
         let granted = CGPreflightScreenCaptureAccess()
         permissionItem.isHidden = granted
         permissionSeparator.isHidden = granted
@@ -213,10 +225,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         shadowItem.state = Settings.windowShadow ? .on : .off
         soundItem.state = Settings.sound ? .on : .off
         askItem.state = Settings.askWhereToSave ? .on : .off
-        folderItem.title = "Guardar en: \(FileManager.default.displayName(atPath: Settings.saveFolder.path))…"
+        folderItem.title = L("Guardar en: ", "Save to: ") + FileManager.default.displayName(atPath: Settings.saveFolder.path) + "…"
         hotKeysItem.state = Settings.hotKeys ? .on : .off
         loginItem.state = LoginItem.isEnabled ? .on : .off
         refreshMenuShortcuts()
+        let language = UserDefaults.standard.string(forKey: Localization.key) ?? ""
+        languageItems.forEach { $0.state = ($0.representedObject as? String) == language ? .on : .off }
         autoUpdateItem.state = updater.installsAutomatically ? .on : .off
         let format = Settings.format
         formatItems.forEach { $0.state = ($0.representedObject as? String) == format.rawValue ? .on : .off }
@@ -230,7 +244,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         recentsMenu.autoenablesItems = false
         let entries = CaptureHistory.entries()
         if entries.isEmpty {
-            let empty = NSMenuItem(title: Settings.keepHistory ? "Sin capturas recientes" : "Historial desactivado",
+            let empty = NSMenuItem(title: Settings.keepHistory ? L("Sin capturas recientes", "No recent captures") : L("Historial desactivado", "History turned off"),
                                    action: nil, keyEquivalent: "")
             empty.isEnabled = false
             recentsMenu.addItem(empty)
@@ -246,10 +260,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let entry = NSMenuItem(title: formatter.string(from: created), action: nil, keyEquivalent: "")
             entry.image = menuThumbnail(for: url)
             let actions = NSMenu()
-            for (title, selector) in [("Copiar", #selector(copyRecent(_:))), ("Anotar…", #selector(annotateRecent(_:))),
-                                      ("Fijar en pantalla", #selector(pinRecent(_:))),
-                                      ("Guardar como…", #selector(saveRecent(_:))),
-                                      ("Mostrar en Finder", #selector(revealRecent(_:)))] {
+            for (title, selector) in [(L("Copiar", "Copy"), #selector(copyRecent(_:))), (L("Anotar…", "Annotate…"), #selector(annotateRecent(_:))),
+                                      (L("Fijar en pantalla", "Pin on screen"), #selector(pinRecent(_:))),
+                                      (L("Guardar como…", "Save as…"), #selector(saveRecent(_:))),
+                                      (L("Mostrar en Finder", "Show in Finder"), #selector(revealRecent(_:)))] {
                 let action = item(title, selector)
                 action.representedObject = url
                 actions.addItem(action)
@@ -259,8 +273,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         thumbnailCache = thumbnailCache.filter { alive.contains($0.key) }
         recentsMenu.addItem(.separator())
-        recentsMenu.addItem(item("Abrir carpeta del historial", #selector(openHistoryFolder)))
-        let clear = item("Borrar historial", #selector(clearHistory))
+        recentsMenu.addItem(item(L("Abrir carpeta del historial", "Open history folder"), #selector(openHistoryFolder)))
+        let clear = item(L("Borrar historial", "Clear history"), #selector(clearHistory))
         clear.isEnabled = !entries.isEmpty
         recentsMenu.addItem(clear)
     }
@@ -320,6 +334,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    @objc private func setLanguage(_ sender: NSMenuItem) {
+        let code = sender.representedObject as? String ?? ""
+        guard code != (UserDefaults.standard.string(forKey: Localization.key) ?? "") else { return }
+        if code.isEmpty {
+            UserDefaults.standard.removeObject(forKey: Localization.key)
+        } else {
+            UserDefaults.standard.set(code, forKey: Localization.key)
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = L("Reiniciar MacCap para cambiar el idioma", "Restart MacCap to change the language")
+        alert.addButton(withTitle: L("Reiniciar ahora", "Restart now"))
+        alert.addButton(withTitle: L("Más tarde", "Later"))
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        // Wait for this instance to quit, then open the app again.
+        process.arguments = ["-c", "sleep 1; /usr/bin/open \"$0\"", Bundle.main.bundlePath]
+        try? process.run()
+        NSApp.terminate(nil)
+    }
+
     @objc private func openShortcuts() {
         if shortcutsWindow == nil {
             let controller = ShortcutsWindowController()
@@ -350,28 +386,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let main = NSMenu()
         let appItem = NSMenuItem()
         let appMenu = NSMenu()
-        appMenu.addItem(NSMenuItem(title: "Salir de MacCap", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        appMenu.addItem(NSMenuItem(title: L("Salir de MacCap", "Quit MacCap"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         appItem.submenu = appMenu
         main.addItem(appItem)
 
         let fileItem = NSMenuItem()
-        let fileMenu = NSMenu(title: "Archivo")
-        fileMenu.addItem(NSMenuItem(title: "Guardar…", action: #selector(AnnotationWindow.saveAnnotation(_:)), keyEquivalent: "s"))
-        fileMenu.addItem(NSMenuItem(title: "Cerrar", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w"))
+        let fileMenu = NSMenu(title: L("Archivo", "File"))
+        fileMenu.addItem(NSMenuItem(title: L("Guardar…", "Save…"), action: #selector(AnnotationWindow.saveAnnotation(_:)), keyEquivalent: "s"))
+        fileMenu.addItem(NSMenuItem(title: L("Cerrar", "Close"), action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w"))
         fileItem.submenu = fileMenu
         main.addItem(fileItem)
 
         let editItem = NSMenuItem()
-        let editMenu = NSMenu(title: "Edición")
-        editMenu.addItem(NSMenuItem(title: "Deshacer", action: #selector(AnnotationWindow.undoAnnotation(_:)), keyEquivalent: "z"))
-        let redo = NSMenuItem(title: "Rehacer", action: #selector(AnnotationWindow.redoAnnotation(_:)), keyEquivalent: "z")
+        let editMenu = NSMenu(title: L("Edición", "Edit"))
+        editMenu.addItem(NSMenuItem(title: L("Deshacer", "Undo"), action: #selector(AnnotationWindow.undoAnnotation(_:)), keyEquivalent: "z"))
+        let redo = NSMenuItem(title: L("Rehacer", "Redo"), action: #selector(AnnotationWindow.redoAnnotation(_:)), keyEquivalent: "z")
         redo.keyEquivalentModifierMask = [.command, .shift]
         editMenu.addItem(redo)
         editMenu.addItem(.separator())
-        editMenu.addItem(NSMenuItem(title: "Cortar", action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
-        editMenu.addItem(NSMenuItem(title: "Copiar", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
-        editMenu.addItem(NSMenuItem(title: "Pegar", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
-        editMenu.addItem(NSMenuItem(title: "Seleccionar todo", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
+        editMenu.addItem(NSMenuItem(title: L("Cortar", "Cut"), action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
+        editMenu.addItem(NSMenuItem(title: L("Copiar", "Copy"), action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
+        editMenu.addItem(NSMenuItem(title: L("Pegar", "Paste"), action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
+        editMenu.addItem(NSMenuItem(title: L("Seleccionar todo", "Select all"), action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
         editItem.submenu = editMenu
         main.addItem(editItem)
         NSApp.mainMenu = main
@@ -440,7 +476,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func annotateImage(at url: URL) {
         guard let data = try? Data(contentsOf: url), let document = AnnotationImage(data: data) else {
-            showError("No se pudo abrir la imagen.", title: "Error")
+            showError(L("No se pudo abrir la imagen.", "The image could not be opened."), title: "Error")
             return
         }
         openEditor(document)
@@ -472,7 +508,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func annotateClipboard() {
         guard let image = NSImage(pasteboard: .general), let document = AnnotationImage(image: image) else {
-            showError("El portapapeles no contiene ninguna imagen.", title: "No hay imagen")
+            showError(L("El portapapeles no contiene ninguna imagen.", "The clipboard has no image."), title: L("No hay imagen", "No image"))
             return
         }
         openEditor(document)
@@ -486,7 +522,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         guard let data = try? Data(contentsOf: url), let document = AnnotationImage(data: data)
                 ?? NSImage(contentsOf: url).flatMap(AnnotationImage.init(image:)) else {
-            showError("No se pudo abrir la imagen.", title: "Error")
+            showError(L("No se pudo abrir la imagen.", "The image could not be opened."), title: "Error")
             return
         }
         openEditor(document)
@@ -497,7 +533,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let path = paths.first(where: { FileManager.default.fileExists(atPath: $0) }) {
             NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: path), configuration: .init(), completionHandler: nil)
         } else {
-            showError("No se encontró la aplicación Captura de pantalla de macOS.", title: "Error")
+            showError(L("No se encontró la aplicación Captura de pantalla de macOS.", "The macOS Screenshot app was not found."), title: "Error")
         }
     }
 
@@ -514,10 +550,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func startRecording(gif: Bool) {
         guard activeRecorder == nil, activeScroll == nil else { return }
         guard #available(macOS 12.3, *) else {
-            showError(RecordingError.unsupported.localizedDescription, title: "No se puede grabar")
+            showError(RecordingError.unsupported.localizedDescription, title: L("No se puede grabar", "Cannot record"))
             return
         }
-        let prompt = "Arrastra para elegir la zona a grabar\(gif ? " como GIF" : "") · Esc para cancelar"
+        let prompt = (gif ? L("Arrastra para elegir la zona a grabar como GIF · Esc para cancelar", "Drag to choose the area to record as GIF · Esc to cancel")
+                           : L("Arrastra para elegir la zona a grabar · Esc para cancelar", "Drag to choose the area to record · Esc to cancel"))
         ScreenOverlay.selectRegion(prompt: prompt) { [weak self] rect, screen in
             guard let self = self, let rect = rect, let screen = screen else { return }
             let movie = FileManager.default.temporaryDirectory.appendingPathComponent("MacCap-\(UUID().uuidString).mp4")
@@ -525,14 +562,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             recorder.onUnexpectedStop = { [weak self] _ in self?.stopRecording() }
             self.activeRecorder = recorder
             self.recordingAsGIF = gif
-            self.captureControls = CaptureControls(region: rect, color: .systemRed, buttonTitle: "Detener") { [weak self] in
+            self.captureControls = CaptureControls(region: rect, color: .systemRed, buttonTitle: L("Detener", "Stop")) { [weak self] in
                 self?.stopRecording()
             }
             self.setIcon("record.circle.fill")
             recorder.start(rect: rect, screen: screen, showsCursor: true) { [weak self] error in
                 guard let error = error else { return }
                 self?.endCaptureSession()
-                self?.showError(error.localizedDescription, title: "No se pudo grabar")
+                self?.showError(error.localizedDescription, title: L("No se pudo grabar", "Could not record"))
             }
         }
     }
@@ -540,16 +577,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func stopRecording() {
         guard #available(macOS 12.3, *), let recorder = activeRecorder as? RegionRecorder else { return }
         activeRecorder = nil
-        captureControls?.setStatus("Guardando…")
+        captureControls?.setStatus(L("Guardando…", "Saving…"))
         let gif = recordingAsGIF
         recorder.stop { [weak self] result in
             guard let self = self else { return }
             switch result {
             case .failure(let error):
                 self.endCaptureSession()
-                self.showError(error.localizedDescription, title: "No se pudo grabar")
+                self.showError(error.localizedDescription, title: L("No se pudo grabar", "Could not record"))
             case .success(let movie) where gif:
-                self.captureControls?.setStatus("Creando GIF…")
+                self.captureControls?.setStatus(L("Creando GIF…", "Creating GIF…"))
                 let output = movie.deletingPathExtension().appendingPathExtension("gif")
                 DispatchQueue.global(qos: .userInitiated).async {
                     let result = Result { try GIFExporter.convert(movie: movie, to: output) }
@@ -558,7 +595,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                         self.endCaptureSession()
                         switch result {
                         case .success: self.deliverRecording(output)
-                        case .failure(let error): self.showError(error.localizedDescription, title: "No se pudo crear el GIF")
+                        case .failure(let error): self.showError(error.localizedDescription, title: L("No se pudo crear el GIF", "Could not create the GIF"))
                         }
                     }
                 }
@@ -571,12 +608,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// Moves a finished recording to the captures folder and shows its thumbnail.
     private func deliverRecording(_ temporary: URL) {
-        let name = CaptureNaming.fileName(for: Date(), extension: temporary.pathExtension, prefix: "Grabación")
+        let name = CaptureNaming.fileName(for: Date(), extension: temporary.pathExtension, prefix: L("Grabación", "Recording"))
         let destination = CaptureNaming.uniqueURL(in: Settings.saveFolder, name: name)
         do {
             try FileManager.default.moveItem(at: temporary, to: destination)
         } catch {
-            showError(error.localizedDescription, title: "No se pudo guardar la grabación")
+            showError(error.localizedDescription, title: L("No se pudo guardar la grabación", "Could not save the recording"))
             return
         }
         flash()
@@ -598,30 +635,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func startScrollCapture() {
         guard activeRecorder == nil, activeScroll == nil else { return }
         guard #available(macOS 12.3, *) else {
-            showError(RecordingError.unsupported.localizedDescription, title: "No se puede capturar")
+            showError(RecordingError.unsupported.localizedDescription, title: L("No se puede capturar", "Cannot capture"))
             return
         }
-        let prompt = "Elige la zona que se desplaza (p. ej. el contenido de la página) · Esc para cancelar"
+        let prompt = L("Elige la zona que se desplaza (p. ej. el contenido de la página) · Esc para cancelar", "Choose the area that scrolls (e.g. the page content) · Esc to cancel")
         ScreenOverlay.selectRegion(prompt: prompt) { [weak self] rect, screen in
             guard let self = self, let rect = rect, let screen = screen else { return }
             let capture = ScrollCapture()
             let scale = screen.backingScaleFactor
             self.scrollScale = scale
             self.activeScroll = capture
-            let controls = CaptureControls(region: rect, color: .systemBlue, buttonTitle: "Terminar") { [weak self] in
+            let controls = CaptureControls(region: rect, color: .systemBlue, buttonTitle: L("Terminar", "Finish")) { [weak self] in
                 self?.stopScrollCapture()
             }
-            controls.setStatus("Desplázate despacio hacia abajo")
+            controls.setStatus(L("Desplázate despacio hacia abajo", "Scroll down slowly"))
             self.captureControls = controls
             capture.onProgress = { [weak controls] height, lost in
-                controls?.setStatus(lost ? "Más despacio…" : "\(Int(CGFloat(height) / scale)) pt")
+                controls?.setStatus(lost ? L("Más despacio…", "Slower…") : "\(Int(CGFloat(height) / scale)) pt")
             }
             capture.onUnexpectedStop = { [weak self] _ in self?.stopScrollCapture() }
             self.setIcon("arrow.down.doc.fill")
             capture.start(rect: rect, screen: screen) { [weak self] error in
                 guard let error = error else { return }
                 self?.endCaptureSession()
-                self?.showError(error.localizedDescription, title: "No se pudo capturar")
+                self?.showError(error.localizedDescription, title: L("No se pudo capturar", "Could not capture"))
             }
         }
     }
@@ -630,12 +667,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard #available(macOS 12.3, *), let capture = activeScroll as? ScrollCapture else { return }
         let scale = scrollScale
         activeScroll = nil
-        captureControls?.setStatus("Uniendo…")
+        captureControls?.setStatus(L("Uniendo…", "Stitching…"))
         capture.stop { [weak self] image in
             guard let self = self else { return }
             self.endCaptureSession()
             guard let image = image else {
-                self.showError("No se capturó ninguna imagen.", title: "Captura con scroll")
+                self.showError(L("No se capturó ninguna imagen.", "No image was captured."), title: L("Captura con scroll", "Scrolling capture"))
                 return
             }
             let bitmap = NSBitmapImageRep(cgImage: image)
@@ -665,20 +702,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func showPermissionHelp(atLaunch: Bool) {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
-        alert.messageText = "MacCap necesita permiso de grabación de pantalla"
-        alert.informativeText = """
+        alert.messageText = L("MacCap necesita permiso de grabación de pantalla", "MacCap needs screen recording permission")
+        alert.informativeText = L("""
         1. Pulsa «Restablecer y abrir Ajustes».
         2. Activa MacCap en la lista y, cuando macOS lo ofrezca, elige «Salir y volver a abrir».
 
         Si MacCap ya aparecía activada, ese permiso es de una versión anterior con otra firma y macOS no lo aplica. \
         Al restablecer se borra para que puedas concederlo de nuevo.
-        """
-        alert.addButton(withTitle: "Restablecer y abrir Ajustes")
-        alert.addButton(withTitle: "Solo abrir Ajustes")
-        alert.addButton(withTitle: "Ahora no")
+        """, """
+        1. Click “Reset and open Settings”.
+        2. Turn MacCap on in the list and, when macOS offers it, choose “Quit & Reopen”.
+
+        If MacCap already looked enabled, that permission belongs to an older version with a different signature, \
+        so macOS doesn't apply it. Resetting removes it so you can grant it again.
+        """)
+        alert.addButton(withTitle: L("Restablecer y abrir Ajustes", "Reset and open Settings"))
+        alert.addButton(withTitle: L("Solo abrir Ajustes", "Just open Settings"))
+        alert.addButton(withTitle: L("Ahora no", "Not now"))
         if atLaunch {
             alert.showsSuppressionButton = true
-            alert.suppressionButton?.title = "No avisar al abrir MacCap"
+            alert.suppressionButton?.title = L("No avisar al abrir MacCap", "Don't warn when MacCap opens")
         }
         let response = alert.runModal()
         if alert.suppressionButton?.state == .on { Settings.suppressPermissionAlert = true }
@@ -735,7 +778,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func toggleLoginItem() {
         do { try LoginItem.setEnabled(!LoginItem.isEnabled) }
-        catch { showError(error.localizedDescription, title: "No se pudo cambiar el inicio automático") }
+        catch { showError(error.localizedDescription, title: L("No se pudo cambiar el inicio automático", "Could not change open at login")) }
     }
 
     @objc private func chooseSaveFolder() {
@@ -745,8 +788,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         panel.canChooseDirectories = true
         panel.canCreateDirectories = true
         panel.directoryURL = Settings.saveFolder
-        panel.prompt = "Elegir"
-        panel.message = "Carpeta donde se guardarán las capturas"
+        panel.prompt = L("Elegir", "Choose")
+        panel.message = L("Carpeta donde se guardarán las capturas", "Folder where screenshots will be saved")
         if panel.runModal() == .OK, let url = panel.url { Settings.saveFolder = url }
     }
 
@@ -771,8 +814,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard !failed.isEmpty else { return }
         NSLog("MacCap: no se pudieron registrar los atajos %@", failed.joined(separator: ", "))
         if reportFailures {
-            showError("Otra aplicación ya usa estas combinaciones:\n\(failed.joined(separator: "\n"))\n\nElige otras en Opciones → Configurar atajos.",
-                      title: "Algunos atajos no están disponibles")
+            showError(L("Otra aplicación ya usa estas combinaciones:", "Another app already uses these combinations:") + "\n\(failed.joined(separator: "\n"))\n\n" + L("Elige otras en Opciones → Configurar atajos.", "Choose others in Options → Configure shortcuts."),
+                      title: L("Algunos atajos no están disponibles", "Some shortcuts are not available"))
         }
     }
 
@@ -833,18 +876,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 if codes.count == 1, let url = URL(string: codes[0]), ["http", "https"].contains(url.scheme?.lowercased() ?? "") {
                     NSApp.activate(ignoringOtherApps: true)
                     let alert = NSAlert()
-                    alert.messageText = "Enlace copiado"
+                    alert.messageText = L("Enlace copiado", "Link copied")
                     alert.informativeText = codes[0]
-                    alert.addButton(withTitle: "Abrir enlace")
-                    alert.addButton(withTitle: "Cerrar")
+                    alert.addButton(withTitle: L("Abrir enlace", "Open link"))
+                    alert.addButton(withTitle: L("Cerrar", "Close"))
                     if alert.runModal() == .alertFirstButtonReturn { NSWorkspace.shared.open(url) }
                 } else {
                     flash()
                 }
             case .failure(let error)?:
-                showError(error.localizedDescription, title: "No se pudo leer el código")
+                showError(error.localizedDescription, title: L("No se pudo leer el código", "Could not read the code"))
             default:
-                showError("No se ha encontrado ningún código QR o de barras en la zona seleccionada.", title: "Sin códigos")
+                showError(L("No se ha encontrado ningún código QR o de barras en la zona seleccionada.", "No QR code or barcode was found in the selected area."), title: L("Sin códigos", "No codes"))
             }
         case .annotate:
             record(data)
@@ -860,9 +903,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 NSPasteboard.general.setString(texts.joined(separator: "\n"), forType: .string)
                 flash()
             case .failure(let error)?:
-                showError(error.localizedDescription, title: "No se pudo reconocer el texto")
+                showError(error.localizedDescription, title: L("No se pudo reconocer el texto", "Could not recognize the text"))
             default:
-                showError("No se ha encontrado texto en la zona seleccionada.", title: "Sin texto")
+                showError(L("No se ha encontrado texto en la zona seleccionada.", "No text was found in the selected area."), title: L("Sin texto", "No text"))
             }
         }
     }
@@ -906,7 +949,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         var errorDescription: String? {
             switch self {
-            case .invalidImage: return "No se pudo leer la captura."
+            case .invalidImage: return L("No se pudo leer la captura.", "Could not read the screenshot.")
             case .screencapture(let message): return message
             }
         }
@@ -954,8 +997,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func save(_ png: Data, alwaysAsk: Bool = false) -> Bool {
         let format = Settings.format
         guard let data = ImageExporter.data(fromPNG: png, format: format) else {
-            showError("No se pudo convertir la imagen a \(format.fileExtension.uppercased()).",
-                      title: "No se pudo guardar la captura")
+            showError(L("No se pudo convertir la imagen a ", "Could not convert the image to ") + format.fileExtension.uppercased() + ".",
+                      title: L("No se pudo guardar la captura", "Could not save the screenshot"))
             return false
         }
         let name = CaptureNaming.fileName(for: Date(), extension: format.fileExtension)
@@ -976,7 +1019,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             try data.write(to: url, options: .atomic)
             return true
         } catch {
-            showError(error.localizedDescription, title: "No se pudo guardar la captura")
+            showError(error.localizedDescription, title: L("No se pudo guardar la captura", "Could not save the screenshot"))
             return false
         }
     }
@@ -988,7 +1031,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let tiff = NSImage(data: data)?.tiffRepresentation {
             ok = pasteboard.setData(tiff, forType: .tiff) || ok
         }
-        if !ok { showError("No se pudo copiar la captura al portapapeles.") }
+        if !ok { showError(L("No se pudo copiar la captura al portapapeles.", "Could not copy the screenshot to the clipboard.")) }
     }
 
     // MARK: - Feedback
@@ -1013,7 +1056,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + (text == nil ? 1.2 : 3), execute: work)
     }
 
-    private func showError(_ message: String, title: String = "No se pudo realizar la captura") {
+    private func showError(_ message: String, title: String = L("No se pudo realizar la captura", "Could not take the screenshot")) {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
         alert.messageText = title
@@ -1025,7 +1068,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 @main
 struct MacCap {
     static func main() {
-        print("MacCap requiere macOS.")
+        print(L("MacCap requiere macOS.", "MacCap requires macOS."))
     }
 }
 #endif

@@ -8,6 +8,11 @@
     <string>MacCap</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
+    <key>CFBundleLocalizations</key>
+    <array>
+        <string>es</string>
+        <string>en</string>
+    </array>
     <key>CFBundleDisplayName</key>
     <string>MacCap</string>
     <key>CFBundleIdentifier</key>

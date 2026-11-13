@@ -43,9 +43,9 @@ enum ImageFormat: String, CaseIterable {
 
     var title: String {
         switch self {
-        case .png: return "PNG (sin pérdida)"
-        case .jpeg: return "JPG (más ligero)"
-        case .heic: return "HEIC (el más ligero)"
+        case .png: return L("PNG (sin pérdida)", "PNG (lossless)")
+        case .jpeg: return L("JPG (más ligero)", "JPG (smaller)")
+        case .heic: return L("HEIC (el más ligero)", "HEIC (smallest)")
         }
     }
 
@@ -70,10 +70,10 @@ enum ImageFormat: String, CaseIterable {
 // MARK: - File names
 
 enum CaptureNaming {
-    static func fileName(for date: Date, extension ext: String = "png", prefix: String = "Captura",
+    static func fileName(for date: Date, extension ext: String = "png", prefix: String = L("Captura", "Screenshot"),
                          calendar: Calendar = .current) -> String {
         let c = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: date)
-        return String(format: "%@ %04d-%02d-%02d a las %02d.%02d.%02d.%@", prefix,
+        return String(format: L("%@ %04d-%02d-%02d a las %02d.%02d.%02d.%@", "%@ %04d-%02d-%02d at %02d.%02d.%02d.%@"), prefix,
                       c.year ?? 0, c.month ?? 0, c.day ?? 0, c.hour ?? 0, c.minute ?? 0, c.second ?? 0, ext)
     }
 
@@ -100,19 +100,19 @@ enum AnnotationTool: String, CaseIterable {
 
     var title: String {
         switch self {
-        case .select: return "Seleccionar y mover"
-        case .blur: return "Difuminar (oculta como el pixelado)"
-        case .crop: return "Recortar"
+        case .select: return L("Seleccionar y mover", "Select and move")
+        case .blur: return L("Difuminar (oculta como el pixelado)", "Blur (hides like pixelate)")
+        case .crop: return L("Recortar", "Crop")
 
-        case .rectangle: return "Rectángulo"
-        case .ellipse: return "Elipse"
-        case .arrow: return "Flecha"
-        case .line: return "Línea"
-        case .pen: return "Lápiz"
-        case .highlighter: return "Resaltador"
-        case .text: return "Texto"
-        case .counter: return "Número"
-        case .pixelate: return "Pixelar"
+        case .rectangle: return L("Rectángulo", "Rectangle")
+        case .ellipse: return L("Elipse", "Ellipse")
+        case .arrow: return L("Flecha", "Arrow")
+        case .line: return L("Línea", "Line")
+        case .pen: return L("Lápiz", "Pen")
+        case .highlighter: return L("Resaltador", "Highlighter")
+        case .text: return L("Texto", "Text")
+        case .counter: return L("Número", "Number")
+        case .pixelate: return L("Pixelar", "Pixelate")
         }
     }
 
@@ -151,9 +151,9 @@ enum StrokeSize: Int, CaseIterable {
 
     var title: String {
         switch self {
-        case .small: return "Fino"
-        case .medium: return "Medio"
-        case .large: return "Grueso"
+        case .small: return L("Fino", "Thin")
+        case .medium: return L("Medio", "Medium")
+        case .large: return L("Grueso", "Thick")
         }
     }
 
@@ -411,13 +411,13 @@ enum ShareBackground: Int, CaseIterable {
 
     var title: String {
         switch self {
-        case .none: return "Sin fondo"
-        case .ocean: return "Océano"
-        case .sunset: return "Atardecer"
-        case .forest: return "Bosque"
-        case .candy: return "Caramelo"
-        case .graphite: return "Grafito"
-        case .light: return "Claro"
+        case .none: return L("Sin fondo", "No background")
+        case .ocean: return L("Océano", "Ocean")
+        case .sunset: return L("Atardecer", "Sunset")
+        case .forest: return L("Bosque", "Forest")
+        case .candy: return L("Caramelo", "Candy")
+        case .graphite: return L("Grafito", "Graphite")
+        case .light: return L("Claro", "Light")
         }
     }
 
@@ -452,19 +452,19 @@ enum ShortcutAction: String, CaseIterable, Codable {
 
     var title: String {
         switch self {
-        case .annotateZone: return "Capturar zona y anotar"
-        case .copyZone: return "Capturar zona y copiar"
-        case .saveZone: return "Capturar zona y guardar"
-        case .ocr: return "Copiar texto de una zona (OCR)"
-        case .qr: return "Leer código QR"
-        case .pinZone: return "Fijar zona en pantalla"
-        case .copyWindow: return "Capturar ventana y copiar"
-        case .copyScreen: return "Capturar pantalla completa y copiar"
-        case .colorPicker: return "Cuentagotas"
-        case .recordVideo: return "Grabar zona en vídeo"
-        case .recordGIF: return "Grabar zona como GIF"
-        case .scrollCapture: return "Captura con scroll"
-        case .ruler: return "Regla"
+        case .annotateZone: return L("Capturar zona y anotar", "Capture area and annotate")
+        case .copyZone: return L("Capturar zona y copiar", "Capture area and copy")
+        case .saveZone: return L("Capturar zona y guardar", "Capture area and save")
+        case .ocr: return L("Copiar texto de una zona (OCR)", "Copy text from an area (OCR)")
+        case .qr: return L("Leer código QR", "Read QR code")
+        case .pinZone: return L("Fijar zona en pantalla", "Pin area on screen")
+        case .copyWindow: return L("Capturar ventana y copiar", "Capture window and copy")
+        case .copyScreen: return L("Capturar pantalla completa y copiar", "Capture full screen and copy")
+        case .colorPicker: return L("Cuentagotas", "Color picker")
+        case .recordVideo: return L("Grabar zona en vídeo", "Record area as video")
+        case .recordGIF: return L("Grabar zona como GIF", "Record area as GIF")
+        case .scrollCapture: return L("Captura con scroll", "Scrolling capture")
+        case .ruler: return L("Regla", "Ruler")
         }
     }
 }
@@ -492,8 +492,8 @@ struct Shortcut: Codable, Equatable, Hashable {
         101: "F9", 109: "F10", 103: "F11", 111: "F12", 105: "F13", 107: "F14", 113: "F15"
     ]
     static let namedKeys: [Int: String] = [
-        49: "Espacio", 36: "↩", 48: "⇥", 51: "⌫", 117: "⌦", 123: "←", 124: "→", 125: "↓", 126: "↑",
-        115: "Inicio", 119: "Fin", 116: "RePág", 121: "AvPág"
+        49: L("Espacio", "Space"), 36: "↩", 48: "⇥", 51: "⌫", 117: "⌦", 123: "←", 124: "→", 125: "↓", 126: "↑",
+        115: L("Inicio", "Home"), 119: L("Fin", "End"), 116: L("RePág", "PgUp"), 121: L("AvPág", "PgDn")
     ]
 }
 
@@ -524,4 +524,24 @@ enum ShortcutMap {
         updated[action] = .some(shortcut)
         return updated
     }
+}
+
+// MARK: - Language
+
+/// Interface language: follows the system unless the user picks one in Options.
+enum Localization {
+    static let key = "language"
+
+    static var isSpanish: Bool {
+        switch UserDefaults.standard.string(forKey: key) {
+        case "es": return true
+        case "en": return false
+        default: return Locale.preferredLanguages.first?.lowercased().hasPrefix("es") ?? false
+        }
+    }
+}
+
+/// Spanish or English text, depending on the interface language.
+func L(_ spanish: String, _ english: String) -> String {
+    Localization.isSpanish ? spanish : english
 }

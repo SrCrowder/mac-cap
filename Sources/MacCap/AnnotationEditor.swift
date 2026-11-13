@@ -637,7 +637,7 @@ final class AnnotationCanvas: NSView, NSTextFieldDelegate {
     private func beginText(at point: CGPoint) {
         textOrigin = point
         let field = NSTextField(string: "")
-        field.placeholderString = "Escribe y pulsa Intro"
+        field.placeholderString = L("Escribe y pulsa Intro", "Type and press Return")
         field.font = NSFont.systemFont(ofSize: max(11, size.fontSize * document.scale * viewScale), weight: .bold)
         field.textColor = AnnotationImage.color(color)
         field.backgroundColor = NSColor.textBackgroundColor.withAlphaComponent(0.85)
@@ -725,14 +725,14 @@ final class AnnotationWindow: NSWindow {
 
 final class AnnotationWindowController: NSWindowController, NSWindowDelegate {
     static let palette: [(String, RGBA)] = [
-        ("Rojo", RGBA(r: 1, g: 0.18, b: 0.18)),
-        ("Naranja", RGBA(r: 1, g: 0.58, b: 0)),
-        ("Amarillo", RGBA(r: 1, g: 0.84, b: 0.04)),
-        ("Verde", RGBA(r: 0.2, g: 0.78, b: 0.35)),
-        ("Azul", RGBA(r: 0.04, g: 0.52, b: 1)),
-        ("Morado", RGBA(r: 0.69, g: 0.32, b: 0.87)),
-        ("Negro", RGBA(r: 0.1, g: 0.1, b: 0.1)),
-        ("Blanco", RGBA(r: 1, g: 1, b: 1))
+        (L("Rojo", "Red"), RGBA(r: 1, g: 0.18, b: 0.18)),
+        (L("Naranja", "Orange"), RGBA(r: 1, g: 0.58, b: 0)),
+        (L("Amarillo", "Yellow"), RGBA(r: 1, g: 0.84, b: 0.04)),
+        (L("Verde", "Green"), RGBA(r: 0.2, g: 0.78, b: 0.35)),
+        (L("Azul", "Blue"), RGBA(r: 0.04, g: 0.52, b: 1)),
+        (L("Morado", "Purple"), RGBA(r: 0.69, g: 0.32, b: 0.87)),
+        (L("Negro", "Black"), RGBA(r: 0.1, g: 0.1, b: 0.1)),
+        (L("Blanco", "White"), RGBA(r: 1, g: 1, b: 1))
     ]
 
     var onClose: (() -> Void)?
@@ -766,7 +766,7 @@ final class AnnotationWindowController: NSWindowController, NSWindowDelegate {
         let window = AnnotationWindow(contentRect: NSRect(origin: .zero, size: size),
                                       styleMask: [.titled, .closable, .resizable, .miniaturizable],
                                       backing: .buffered, defer: false)
-        window.title = "Anotar captura"
+        window.title = L("Anotar captura", "Annotate screenshot")
         window.minSize = NSSize(width: 960, height: 420)
         window.isReleasedWhenClosed = false
         window.center()
@@ -817,9 +817,9 @@ final class AnnotationWindowController: NSWindowController, NSWindowDelegate {
         sizeControl.target = self
         sizeControl.action = #selector(sizeChanged)
 
-        undoButton = Self.iconButton("arrow.uturn.backward", "Deshacer (⌘Z)", self, #selector(undo))
-        redoButton = Self.iconButton("arrow.uturn.forward", "Rehacer (⇧⌘Z)", self, #selector(redo))
-        clearButton = Self.iconButton("trash", "Borrar todas las anotaciones", self, #selector(clearAll))
+        undoButton = Self.iconButton("arrow.uturn.backward", L("Deshacer (⌘Z)", "Undo (⌘Z)"), self, #selector(undo))
+        redoButton = Self.iconButton("arrow.uturn.forward", L("Rehacer (⇧⌘Z)", "Redo (⇧⌘Z)"), self, #selector(redo))
+        clearButton = Self.iconButton("trash", L("Borrar todas las anotaciones", "Delete all annotations"), self, #selector(clearAll))
 
         let spacer = NSView()
         spacer.setContentHuggingPriority(.init(1), for: .horizontal)
@@ -828,22 +828,22 @@ final class AnnotationWindowController: NSWindowController, NSWindowDelegate {
         top.spacing = 10
         top.alignment = .centerY
 
-        let hint = NSTextField(labelWithString: "V: seleccionar y mover · Mayús: proporciones · Supr: borrar · Letras: herramientas")
+        let hint = NSTextField(labelWithString: L("V: seleccionar y mover · Mayús: proporciones · Supr: borrar · Letras: herramientas", "V: select and move · Shift: proportions · Delete: remove · Letters: tools"))
         hint.textColor = .secondaryLabelColor
         hint.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         hint.lineBreakMode = .byTruncatingTail
         hint.setContentCompressionResistancePriority(.init(1), for: .horizontal)
-        let copy = NSButton(title: "Copiar", target: self, action: #selector(copyResult))
-        let save = NSButton(title: "Guardar…", target: self, action: #selector(saveResult))
-        let done = NSButton(title: "Copiar y cerrar", target: self, action: #selector(copyAndClose))
+        let copy = NSButton(title: L("Copiar", "Copy"), target: self, action: #selector(copyResult))
+        let save = NSButton(title: L("Guardar…", "Save…"), target: self, action: #selector(saveResult))
+        let done = NSButton(title: L("Copiar y cerrar", "Copy and close"), target: self, action: #selector(copyAndClose))
         done.bezelColor = .controlAccentColor
         done.keyEquivalent = "\r"
         done.keyEquivalentModifierMask = [.command]
         for style in ShareBackground.allCases { backgroundPopup.addItem(withTitle: style.title) }
         backgroundPopup.target = self
         backgroundPopup.action = #selector(backgroundChanged)
-        backgroundPopup.toolTip = "Fondo con margen y sombra para compartir"
-        let backgroundLabel = NSTextField(labelWithString: "Fondo:")
+        backgroundPopup.toolTip = L("Fondo con margen y sombra para compartir", "Background with padding and shadow for sharing")
+        let backgroundLabel = NSTextField(labelWithString: L("Fondo:", "Background:"))
         let bottom = NSStackView(views: [hint, backgroundLabel, backgroundPopup, copy, save, done])
         bottom.orientation = .horizontal
         bottom.spacing = 10
@@ -951,7 +951,7 @@ final class AnnotationWindowController: NSWindowController, NSWindowDelegate {
     private func render() -> Data? {
         if let data = canvas.pngData() { return data }
         let alert = NSAlert()
-        alert.messageText = "No se pudo generar la imagen anotada."
+        alert.messageText = L("No se pudo generar la imagen anotada.", "Could not create the annotated image.")
         alert.runModal()
         return nil
     }
@@ -960,11 +960,11 @@ final class AnnotationWindowController: NSWindowController, NSWindowDelegate {
         canvas.commitText()
         guard hasUnexportedChanges else { return true }
         let alert = NSAlert()
-        alert.messageText = "¿Cerrar sin copiar ni guardar?"
-        alert.informativeText = "Las anotaciones se perderán."
-        alert.addButton(withTitle: "Copiar y cerrar")
-        alert.addButton(withTitle: "Cancelar")
-        alert.addButton(withTitle: "Descartar")
+        alert.messageText = L("¿Cerrar sin copiar ni guardar?", "Close without copying or saving?")
+        alert.informativeText = L("Las anotaciones se perderán.", "The annotations will be lost.")
+        alert.addButton(withTitle: L("Copiar y cerrar", "Copy and close"))
+        alert.addButton(withTitle: L("Cancelar", "Cancel"))
+        alert.addButton(withTitle: L("Descartar", "Discard"))
         switch alert.runModal() {
         case .alertFirstButtonReturn:
             guard let data = render() else { return false }
