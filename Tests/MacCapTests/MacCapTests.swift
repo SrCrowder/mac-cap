@@ -6,9 +6,11 @@ final class MacCapTests: XCTestCase {
         XCTAssertEqual(CaptureOptions(mode: .screen).arguments(output: "/tmp/image.png"),
                        ["-x", "-m", "/tmp/image.png"])
         XCTAssertEqual(CaptureOptions(mode: .selection, delay: true, cursor: true).arguments(output: "image.png"),
-                       ["-x", "-i", "-s", "-T", "5", "-C", "image.png"])
-        XCTAssertEqual(CaptureOptions(mode: .window).arguments(output: "image.png"),
+                       ["-x", "-i", "-s", "-T", "5", "image.png"])
+        XCTAssertEqual(CaptureOptions(mode: .window, cursor: true).arguments(output: "image.png"),
                        ["-x", "-i", "-w", "image.png"])
+        XCTAssertEqual(CaptureOptions(mode: .screen, cursor: true).arguments(output: "image.png"),
+                       ["-x", "-m", "-C", "image.png"])
     }
 
     func testAnnotationGeometryFitsAndClamps() {

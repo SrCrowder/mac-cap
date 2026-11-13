@@ -17,7 +17,7 @@ struct CaptureOptions {
         case .window: result += ["-i", "-w"]
         }
         if delay { result += ["-T", "5"] }
-        if cursor { result.append("-C") }
+        if cursor, case .screen = mode { result.append("-C") }
         return result + [output]
     }
 }
@@ -56,6 +56,7 @@ enum AnnotationGeometry {
 
 #if os(macOS)
 import AppKit
+import UniformTypeIdentifiers
 
 @main
 struct MacCap {
@@ -93,7 +94,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         delayItem = NSMenuItem(title: "Retardo de 5 segundos", action: #selector(toggleOption(_:)), keyEquivalent: "")
         delayItem.target = self
         menu.addItem(delayItem)
-        cursorItem = NSMenuItem(title: "Incluir cursor", action: #selector(toggleOption(_:)), keyEquivalent: "")
+        cursorItem = NSMenuItem(title: "Incluir cursor (pantalla principal)", action: #selector(toggleOption(_:)), keyEquivalent: "")
         cursorItem.target = self
         menu.addItem(cursorItem)
         menu.addItem(.separator())
@@ -158,7 +159,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     return
                 }
                 let data = try Data(contentsOf: output)
-                guard NSImage(data: data) != nil else { throw CaptureError.invalidImage }
+                guard NSImage(data: data) != nil, NSBitmapImageRep(data: data) != nil else {
+                    throw CaptureError.invalidImage
+                }
                 DispatchQueue.main.async {
                     switch destination {
                     case .save: self.save(data)
