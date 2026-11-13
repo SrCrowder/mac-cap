@@ -24,6 +24,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var captureInProgress = false
     private var editors: [AnnotationWindowController] = []
     private var restoreIconWork: DispatchWorkItem?
+    private let updater = Updater()
+    private var autoUpdateItem: NSMenuItem!
 
     // Option items whose state is refreshed when the menu opens.
     private var delayItems: [NSMenuItem] = []
@@ -100,6 +102,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         options.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: nil)
         options.submenu = buildOptionsMenu()
         menu.addItem(options)
+        let check = NSMenuItem(title: "Buscar actualizaciones…", action: #selector(Updater.checkForUpdates(_:)), keyEquivalent: "")
+        check.target = updater
+        check.image = NSImage(systemSymbolName: "arrow.down.circle", accessibilityDescription: nil)
+        check.isHidden = !updater.isAvailable
+        menu.addItem(check)
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Salir de MacCap", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         return menu
@@ -137,6 +144,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         loginItem = item("Abrir al iniciar sesión", #selector(toggleLoginItem))
         loginItem.isHidden = !LoginItem.isSupported
         menu.addItem(loginItem)
+        autoUpdateItem = item("Instalar actualizaciones sin preguntar", #selector(toggleAutoUpdate))
+        autoUpdateItem.isHidden = !updater.isAvailable
+        menu.addItem(autoUpdateItem)
         return menu
     }
 
@@ -153,6 +163,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         folderItem.title = "Guardar en: \(FileManager.default.displayName(atPath: Settings.saveFolder.path))…"
         hotKeysItem.state = Settings.hotKeys ? .on : .off
         loginItem.state = LoginItem.isEnabled ? .on : .off
+        autoUpdateItem.state = updater.installsAutomatically ? .on : .off
     }
 
     private func item(_ title: String, _ action: Selector, hotKey: HotKey? = nil, symbol: String? = nil) -> NSMenuItem {
@@ -268,6 +279,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Settings.hotKeys.toggle()
         applyHotKeys()
     }
+
+    @objc private func toggleAutoUpdate() { updater.installsAutomatically.toggle() }
 
     @objc private func toggleLoginItem() {
         do { try LoginItem.setEnabled(!LoginItem.isEnabled) }

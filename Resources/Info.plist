@@ -28,6 +28,14 @@
     <true/>
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.utilities</string>
+    <key>SUFeedURL</key>
+    <string>https://github.com/SrCrowder/mac-cap/releases/latest/download/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>dA3Cd7zO2irgEQGtqnjHo/VvKIX/sy6dzmUtFogiBoU=</string>
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
+    <key>SUScheduledCheckInterval</key>
+    <integer>86400</integer>
     <key>NSHighResolutionCapable</key>
     <true/>
 </dict>
