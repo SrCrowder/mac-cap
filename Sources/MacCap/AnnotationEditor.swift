@@ -50,7 +50,7 @@ final class AnnotationImage {
                 "inputGVector": CIVector(x: 0, y: 0.12, z: 0, w: 0),
                 "inputBVector": CIVector(x: 0, y: 0, z: 0.12, w: 0),
                 "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 0),
-                "inputBiasVector": CIVector(x: -0.06, y: -0.06, z: -0.06, w: 0)
+                "inputBiasVector": CIVector(x: -0.06, y: -0.06, z: -0.06, w: 1)
             ]) {
             output = noise.applyingFilter("CIAdditionCompositing", parameters: [kCIInputBackgroundImageKey: output])
                 .cropped(to: input.extent)

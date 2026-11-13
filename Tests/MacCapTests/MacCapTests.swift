@@ -126,3 +126,71 @@ final class AnnotationHistoryTests: XCTestCase {
         XCTAssertEqual(history.items, [a, b])
     }
 }
+
+#if os(macOS)
+import AppKit
+
+final class RenderingTests: XCTestCase {
+    /// A 400×300 px image (Retina-like: 200×150 pt) with black text-like stripes on white.
+    private func makeDocument() throws -> AnnotationImage {
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 400, pixelsHigh: 300,
+                                                    bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+                                                    isPlanar: false, colorSpaceName: .deviceRGB,
+                                                    bytesPerRow: 0, bitsPerPixel: 0))
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
+        NSColor.white.setFill()
+        CGRect(x: 0, y: 0, width: 400, height: 300).fill()
+        NSColor.black.setFill()
+        for x in stride(from: 0, to: 400, by: 4) { CGRect(x: x, y: 0, width: 2, height: 300).fill() }
+        NSGraphicsContext.restoreGraphicsState()
+        bitmap.size = NSSize(width: 200, height: 150)
+        let data = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+        return try XCTUnwrap(AnnotationImage(data: data))
+    }
+
+    private func pixel(_ bitmap: NSBitmapImageRep, _ x: Int, _ y: Int) -> NSColor {
+        bitmap.colorAt(x: x, y: y)!.usingColorSpace(.deviceRGB)!
+    }
+
+    func testExportKeepsSizeAndDrawsEveryTool() throws {
+        let document = try makeDocument()
+        XCTAssertEqual(document.pixelSize, CGSize(width: 400, height: 300))
+        XCTAssertEqual(document.scale, 2)
+        let red = RGBA(r: 1, g: 0, b: 0)
+        var annotations: [Annotation] = []
+        for tool in AnnotationTool.allCases {
+            annotations.append(Annotation(tool: tool, points: [CGPoint(x: 20, y: 20), CGPoint(x: 120, y: 90)],
+                                          color: red, lineWidth: 8, fontSize: 30, text: "Hola", number: 1))
+        }
+        let data = try XCTUnwrap(document.pngData(with: annotations))
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(data: data))
+        XCTAssertEqual(bitmap.pixelsWide, 400)
+        XCTAssertEqual(bitmap.pixelsHigh, 300)
+        XCTAssertEqual(bitmap.size, NSSize(width: 200, height: 150))
+    }
+
+    func testPixelateHidesStripesAndRectangleIsRed() throws {
+        let document = try makeDocument()
+        let red = RGBA(r: 1, g: 0, b: 0)
+        let pixelate = Annotation(tool: .pixelate, points: [CGPoint(x: 200, y: 100), CGPoint(x: 400, y: 300)],
+                                  color: red, lineWidth: 4)
+        let rectangle = Annotation(tool: .rectangle, points: [CGPoint(x: 10, y: 10), CGPoint(x: 150, y: 80)],
+                                   color: red, lineWidth: 8)
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(document.pngData(with: [pixelate, rectangle]))))
+
+        // Outside the pixelated area the stripes are intact: adjacent columns differ a lot.
+        XCTAssertGreaterThan(abs(pixel(bitmap, 160, 250).redComponent - pixel(bitmap, 162, 250).redComponent), 0.8)
+        // Inside, blocks average the stripes to mid grey (plus a little noise).
+        for (x, y) in [(260, 160), (300, 200), (350, 260)] {
+            let gray = pixel(bitmap, x, y).redComponent
+            XCTAssertGreaterThan(gray, 0.2, "(\(x), \(y))")
+            XCTAssertLessThan(gray, 0.8, "(\(x), \(y))")
+        }
+        // Top edge of the rectangle (image coordinates have the origin at the top-left).
+        let edge = pixel(bitmap, 80, 10)
+        XCTAssertGreaterThan(edge.redComponent, 0.8)
+        XCTAssertLessThan(edge.greenComponent, 0.3)
+    }
+}
+#endif
