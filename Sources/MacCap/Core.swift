@@ -231,9 +231,10 @@ enum AnnotationGeometry {
         (annotations.filter { $0.tool == .counter }.map(\.number).max() ?? 0) + 1
     }
 
-    /// Pixel block size for the pixelate tool.
-    static func pixelateBlock(for imageSize: CGSize) -> CGFloat {
-        max(8, (max(imageSize.width, imageSize.height) / 90).rounded())
+    /// Pixel block size for the pixelate tool: well above normal text height (≈13 pt) so each block
+    /// mixes several glyphs and the text cannot be reconstructed from the averages.
+    static func pixelateBlock(for imageSize: CGSize, scale: CGFloat) -> CGFloat {
+        max(22 * scale, (max(imageSize.width, imageSize.height) / 70).rounded())
     }
 }
 
