@@ -10,7 +10,7 @@ Cada push a `main` compila la app con GitHub Actions y la publica en la release 
 
 - [**MacCap.dmg**](https://github.com/SrCrowder/mac-cap/releases/download/latest/MacCap.dmg) (o `MacCap.zip`) en la página de [Releases](https://github.com/SrCrowder/mac-cap/releases).
 - También como *artifact* en cada ejecución de [Actions](https://github.com/SrCrowder/mac-cap/actions).
-- Al subir una etiqueta `v*` (p. ej. `git tag v1.0 && git push --tags`) se crea una release con versión.
+- Al subir una etiqueta `v*` (p. ej. `git tag v1.0 && git push --tags`) se crea una release con versión (también sirve como actualización).
 
 La app es universal (Apple Silicon e Intel) y necesita macOS 12 o posterior.
 
@@ -24,8 +24,23 @@ La app no está firmada con un certificado de Apple Developer, así que la prime
 3. Concede **Grabación de pantalla** a MacCap cuando lo pida (**Privacidad y seguridad → Grabación de pantalla**)
    y vuelve a abrir la app. Si falta el permiso, el menú muestra un aviso para abrir esos ajustes.
 
-Cada compilación nueva tiene una firma distinta, así que tras actualizar puede que tengas que volver a dar el permiso
-(quita MacCap de la lista y añádela de nuevo si no funciona).
+### Actualizaciones automáticas
+
+MacCap se actualiza sola con [Sparkle](https://sparkle-project.org): busca versiones nuevas al arrancar y una vez al
+día, avisa con las novedades y se instala y reinicia con un clic. También puedes usar **Buscar actualizaciones…** en
+el menú, o activar **Opciones → Instalar actualizaciones sin preguntar** para que lo haga en segundo plano.
+
+Cómo funciona por dentro:
+
+- Cada push a `main` publica en la release `latest` el `MacCap.zip` y un `appcast.xml` (el canal de actualizaciones),
+  con la versión `1.1.<número de ejecución>`.
+- El zip va firmado con una clave Ed25519 (secreto `SPARKLE_ED_PRIVATE_KEY`); la app solo instala actualizaciones cuya
+  firma coincide con la clave pública de `Info.plist` (`SUPublicEDKey`).
+- La app se firma siempre con el mismo certificado autofirmado (secretos `MACOS_CERT_P12` y `MACOS_CERT_PASSWORD`), así
+  que macOS la reconoce como la misma app y **conserva el permiso de grabación de pantalla** entre versiones.
+
+Las versiones anteriores a la 1.1.12 no incluyen el actualizador: instálala a mano una vez más y desde ahí se
+actualizará sola (puede que pida el permiso de grabación de pantalla esa última vez).
 
 ## Qué hace
 
