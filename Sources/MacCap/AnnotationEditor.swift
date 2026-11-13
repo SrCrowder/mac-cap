@@ -11,6 +11,7 @@ final class AnnotationImage {
     /// Pixels per point (2 for Retina captures).
     let scale: CGFloat
     private(set) lazy var pixelated: NSImage? = makePixelated()
+    private(set) lazy var blurred: NSImage? = makeBlurred()
 
     init?(bitmap: NSBitmapImageRep) {
         guard bitmap.pixelsWide > 0, bitmap.pixelsHigh > 0, let cgImage = bitmap.cgImage else { return nil }
@@ -37,6 +38,17 @@ final class AnnotationImage {
         let offset = CGPoint(x: CGFloat.random(in: 0..<block), y: CGFloat.random(in: 0..<block))
         let output = Self.pixelate(CIImage(cgImage: cgImage), block: block, offset: offset, noise: true)
         guard let result = CIContext().createCGImage(output, from: output.extent) else { return nil }
+        return NSImage(cgImage: result, size: pixelSize)
+    }
+
+    private func makeBlurred() -> NSImage? {
+        guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
+        let input = CIImage(cgImage: cgImage)
+        let radius = AnnotationGeometry.pixelateBlock(for: pixelSize, scale: scale) / 2
+        let output = input.clampedToExtent()
+            .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: radius])
+            .cropped(to: input.extent)
+        guard let result = CIContext().createCGImage(output, from: input.extent) else { return nil }
         return NSImage(cgImage: result, size: pixelSize)
     }
 
@@ -70,7 +82,52 @@ final class AnnotationImage {
         return output
     }
 
-    /// Draws the image and annotations. The current context must be flipped, 1 unit = 1 image pixel.
+    /// Draws the final picture: optional background, the (cropped) image and its annotations.
+    /// The current context must be flipped, 1 unit = 1 output pixel.
+    func drawComposition(_ state: EditorState, background: BackgroundStyle) {
+        let visible = state.crop ?? CGRect(origin: .zero, size: pixelSize)
+        let layout = background.layout(content: visible.size)
+        let contentRect = CGRect(origin: layout.contentOrigin, size: visible.size)
+        let radius: CGFloat = background == .none ? 0 : 10 * scale
+        if let (start, end) = background.colors {
+            NSGradient(starting: Self.color(start), ending: Self.color(end))?
+                .draw(in: CGRect(origin: .zero, size: layout.size), angle: 60)
+            NSGraphicsContext.saveGraphicsState()
+            let shadow = NSShadow()
+            shadow.shadowColor = NSColor.black.withAlphaComponent(0.35)
+            shadow.shadowBlurRadius = 16 * scale
+            shadow.shadowOffset = NSSize(width: 0, height: -6 * scale)
+            shadow.set()
+            NSColor.white.setFill()
+            NSBezierPath(roundedRect: contentRect, xRadius: radius, yRadius: radius).fill()
+            NSGraphicsContext.restoreGraphicsState()
+        }
+        NSGraphicsContext.saveGraphicsState()
+        NSBezierPath(roundedRect: contentRect, xRadius: radius, yRadius: radius).addClip()
+        let transform = NSAffineTransform()
+        transform.translateX(by: layout.contentOrigin.x - visible.minX, yBy: layout.contentOrigin.y - visible.minY)
+        transform.concat()
+        draw(state.items)
+        NSGraphicsContext.restoreGraphicsState()
+    }
+
+    static func color(_ c: RGBA) -> NSColor { NSColor(srgbRed: c.r, green: c.g, blue: c.b, alpha: c.a) }
+
+    func textString(_ a: Annotation) -> NSAttributedString {
+        let shadow = NSShadow()
+        shadow.shadowColor = isDark(a.color) ? NSColor.white.withAlphaComponent(0.85) : NSColor.black.withAlphaComponent(0.75)
+        shadow.shadowBlurRadius = a.fontSize / 8
+        shadow.shadowOffset = .zero
+        return NSAttributedString(string: a.text, attributes: [
+            .font: NSFont.systemFont(ofSize: a.fontSize, weight: .bold),
+            .foregroundColor: Self.color(a.color),
+            .shadow: shadow
+        ])
+    }
+
+    func textSize(_ a: Annotation) -> CGSize { a.tool == .text ? textString(a).size() : .zero }
+
+    /// Draws the image and annotations in image pixels (origin top-left, flipped context).
     func draw(_ annotations: [Annotation]) {
         image.draw(in: CGRect(origin: .zero, size: pixelSize), from: .zero, operation: .copy,
                    fraction: 1, respectFlipped: true, hints: nil)
@@ -136,15 +193,7 @@ final class AnnotationImage {
             path.stroke()
         case .text:
             guard let origin = a.points.first else { return }
-            let shadow = NSShadow()
-            shadow.shadowColor = isDark(a.color) ? NSColor.white.withAlphaComponent(0.85) : NSColor.black.withAlphaComponent(0.75)
-            shadow.shadowBlurRadius = a.fontSize / 8
-            shadow.shadowOffset = .zero
-            NSAttributedString(string: a.text, attributes: [
-                .font: NSFont.systemFont(ofSize: a.fontSize, weight: .bold),
-                .foregroundColor: color,
-                .shadow: shadow
-            ]).draw(at: origin)
+            textString(a).draw(at: origin)
         case .counter:
             guard let center = a.points.first else { return }
             let radius = a.fontSize
@@ -163,12 +212,14 @@ final class AnnotationImage {
             ])
             let size = label.size()
             label.draw(at: CGPoint(x: center.x - size.width / 2, y: center.y - size.height / 2))
-        case .pixelate:
-            guard a.points.count == 2, let pixelated = pixelated else { return }
+        case .pixelate, .blur:
+            guard a.points.count == 2, let filtered = a.tool == .pixelate ? pixelated : blurred else { return }
             let rect = AnnotationGeometry.rect(from: a.points[0], to: a.points[1])
             NSBezierPath(rect: rect).addClip()
-            pixelated.draw(in: CGRect(origin: .zero, size: pixelSize), from: .zero, operation: .copy,
-                           fraction: 1, respectFlipped: true, hints: nil)
+            filtered.draw(in: CGRect(origin: .zero, size: pixelSize), from: .zero, operation: .copy,
+                          fraction: 1, respectFlipped: true, hints: nil)
+        case .select, .crop:
+            break
         }
     }
 
@@ -182,21 +233,28 @@ final class AnnotationImage {
 
     private func isDark(_ c: RGBA) -> Bool { 0.299 * c.r + 0.587 * c.g + 0.114 * c.b < 0.6 }
 
-    /// PNG with the annotations burnt in, keeping the original resolution and DPI.
     func pngData(with annotations: [Annotation]) -> Data? {
-        guard let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(pixelSize.width),
-                                            pixelsHigh: Int(pixelSize.height), bitsPerSample: 8,
+        pngData(EditorState(items: annotations), background: .none)
+    }
+
+    /// PNG with the annotations burnt in, keeping the original resolution and DPI.
+    func pngData(_ state: EditorState, background: BackgroundStyle) -> Data? {
+        let visible = state.crop ?? CGRect(origin: .zero, size: pixelSize)
+        let size = background.layout(content: visible.size).size
+        guard size.width >= 1, size.height >= 1,
+              let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width),
+                                            pixelsHigh: Int(size.height), bitsPerSample: 8,
                                             samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
                                             colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
               let bitmapContext = NSGraphicsContext(bitmapImageRep: bitmap) else { return nil }
         NSGraphicsContext.saveGraphicsState()
         let context = bitmapContext.cgContext
-        context.translateBy(x: 0, y: pixelSize.height)
+        context.translateBy(x: 0, y: size.height)
         context.scaleBy(x: 1, y: -1)
         NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: true)
-        draw(annotations)
+        drawComposition(state, background: background)
         NSGraphicsContext.restoreGraphicsState()
-        bitmap.size = NSSize(width: pixelSize.width / scale, height: pixelSize.height / scale)
+        bitmap.size = NSSize(width: size.width / scale, height: size.height / scale)
         return bitmap.representation(using: .png, properties: [:])
     }
 }
@@ -207,13 +265,40 @@ final class AnnotationCanvas: NSView, NSTextFieldDelegate {
     let document: AnnotationImage
     private(set) var history = AnnotationHistory()
     var tool: AnnotationTool = .rectangle {
-        didSet { commitText(); window?.invalidateCursorRects(for: self); onStateChange?() }
+        didSet {
+            commitText()
+            selection = nil
+            window?.invalidateCursorRects(for: self)
+            onStateChange?()
+        }
     }
-    var color = RGBA(r: 1, g: 0.18, b: 0.18)
-    var size: StrokeSize = .medium
+    var color = RGBA(r: 1, g: 0.18, b: 0.18) { didSet { applyStyleToSelection() } }
+    var size: StrokeSize = .medium { didSet { applyStyleToSelection() } }
+    var background: BackgroundStyle = .none {
+        didSet {
+            commitText()
+            needsDisplay = true
+            window?.invalidateCursorRects(for: self)
+            onStateChange?()
+        }
+    }
     var onStateChange: (() -> Void)?
+    /// Index of the selected annotation (select tool).
+    private(set) var selection: Int? {
+        didSet { needsDisplay = true; onStateChange?() }
+    }
+
+    private enum Drag {
+        case move(start: CGPoint, original: Annotation)
+        case resize(point: Int, original: Annotation)
+        case crop(start: CGPoint)
+    }
 
     private var current: Annotation?
+    private var drag: Drag?
+    /// The selected annotation while it is being moved or resized.
+    private var preview: Annotation?
+    private var cropPreview: CGRect?
     private var textField: NSTextField?
     private var textOrigin: CGPoint = .zero
 
@@ -228,32 +313,82 @@ final class AnnotationCanvas: NSView, NSTextFieldDelegate {
     override var acceptsFirstResponder: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-    private var imageRect: CGRect {
+    var state: EditorState { history.state }
+
+    // MARK: Layout
+
+    /// Part of the image shown (crop), in image pixels.
+    private var imageVisibleRect: CGRect { history.crop ?? CGRect(origin: .zero, size: document.pixelSize) }
+
+    private var layout: (size: CGSize, contentOrigin: CGPoint) {
+        background.layout(content: imageVisibleRect.size)
+    }
+
+    /// Where the whole composition is drawn, in view coordinates.
+    private var compositionRect: CGRect {
+        let composition = layout.size
         // Never upscale beyond the image's natural size in points.
-        let natural = CGSize(width: document.pixelSize.width / document.scale,
-                             height: document.pixelSize.height / document.scale)
-        let fitted = AnnotationGeometry.imageRect(image: document.pixelSize, in: bounds.insetBy(dx: 8, dy: 8))
+        let natural = CGSize(width: composition.width / document.scale, height: composition.height / document.scale)
+        let fitted = AnnotationGeometry.imageRect(image: composition, in: bounds.insetBy(dx: 8, dy: 8))
         guard fitted.width > natural.width else { return fitted }
         return CGRect(x: bounds.midX - natural.width / 2, y: bounds.midY - natural.height / 2,
                       width: natural.width, height: natural.height).integral
     }
 
     /// View points per image pixel.
-    private var viewScale: CGFloat { imageRect.width / max(document.pixelSize.width, 1) }
+    private var viewScale: CGFloat { compositionRect.width / max(layout.size.width, 1) }
+
+    private func viewPoint(_ p: CGPoint) -> CGPoint {
+        let rect = compositionRect, origin = layout.contentOrigin, visible = imageVisibleRect
+        return CGPoint(x: rect.minX + (origin.x + p.x - visible.minX) * viewScale,
+                       y: rect.minY + (origin.y + p.y - visible.minY) * viewScale)
+    }
+
+    private func viewRect(_ r: CGRect) -> CGRect {
+        CGRect(origin: viewPoint(r.origin), size: CGSize(width: r.width * viewScale, height: r.height * viewScale))
+    }
+
+    /// The image area (without background) in view coordinates.
+    private var imageAreaInView: CGRect { viewRect(imageVisibleRect) }
+
+    /// View point → image pixels, clamped to the visible part of the image.
+    private func imagePoint(_ v: CGPoint) -> CGPoint {
+        let rect = compositionRect, origin = layout.contentOrigin, visible = imageVisibleRect
+        let scale = max(viewScale, 0.0001)
+        let x = (v.x - rect.minX) / scale - origin.x + visible.minX
+        let y = (v.y - rect.minY) / scale - origin.y + visible.minY
+        return CGPoint(x: min(max(x, visible.minX), visible.maxX), y: min(max(y, visible.minY), visible.maxY))
+    }
+
+    private func imagePoint(_ event: NSEvent) -> CGPoint { imagePoint(convert(event.locationInWindow, from: nil)) }
+
+    // MARK: Drawing
+
+    /// State as shown right now, including the drag in progress.
+    private var displayState: EditorState {
+        var shown = history.state
+        if let index = selection, let preview = preview, shown.items.indices.contains(index) {
+            shown.items[index] = preview
+        }
+        if let current = current { shown.items.append(current) }
+        return shown
+    }
 
     override func draw(_ dirtyRect: NSRect) {
         NSColor.underPageBackgroundColor.setFill()
         bounds.fill()
-        let rect = imageRect
+        let rect = compositionRect
         guard rect.width > 0 else { return }
-        NSGraphicsContext.saveGraphicsState()
-        let frameShadow = NSShadow()
-        frameShadow.shadowColor = NSColor.black.withAlphaComponent(0.3)
-        frameShadow.shadowBlurRadius = 8
-        frameShadow.set()
-        NSColor.white.setFill()
-        rect.fill()
-        NSGraphicsContext.restoreGraphicsState()
+        if background == .none {
+            NSGraphicsContext.saveGraphicsState()
+            let frameShadow = NSShadow()
+            frameShadow.shadowColor = NSColor.black.withAlphaComponent(0.3)
+            frameShadow.shadowBlurRadius = 8
+            frameShadow.set()
+            NSColor.white.setFill()
+            rect.fill()
+            NSGraphicsContext.restoreGraphicsState()
+        }
 
         NSGraphicsContext.saveGraphicsState()
         NSBezierPath(rect: rect).addClip()
@@ -261,12 +396,66 @@ final class AnnotationCanvas: NSView, NSTextFieldDelegate {
         transform.translateX(by: rect.minX, yBy: rect.minY)
         transform.scale(by: viewScale)
         transform.concat()
-        document.draw(history.items + (current.map { [$0] } ?? []))
+        document.drawComposition(displayState, background: background)
         NSGraphicsContext.restoreGraphicsState()
+
+        drawSelection()
+        drawCropPreview()
+    }
+
+    private func drawSelection() {
+        guard let index = selection, displayState.items.indices.contains(index) else { return }
+        let annotation = displayState.items[index]
+        let box = viewRect(AnnotationGeometry.bounds(of: annotation, textSize: document.textSize)).insetBy(dx: -4, dy: -4)
+        let outline = NSBezierPath(rect: box)
+        outline.lineWidth = 1
+        outline.setLineDash([4, 3], count: 2, phase: 0)
+        NSColor.controlAccentColor.setStroke()
+        outline.stroke()
+        for handle in handles(for: annotation) {
+            let circle = NSBezierPath(ovalIn: CGRect(x: handle.x - 5, y: handle.y - 5, width: 10, height: 10))
+            NSColor.white.setFill()
+            circle.fill()
+            circle.lineWidth = 1.5
+            NSColor.controlAccentColor.setStroke()
+            circle.stroke()
+        }
+    }
+
+    private func drawCropPreview() {
+        guard let crop = cropPreview else { return }
+        let area = imageAreaInView, cropRect = viewRect(crop)
+        let dim = NSBezierPath(rect: area)
+        dim.append(NSBezierPath(rect: cropRect))
+        dim.windingRule = .evenOdd
+        NSColor.black.withAlphaComponent(0.45).setFill()
+        dim.fill()
+        let outline = NSBezierPath(rect: cropRect)
+        outline.lineWidth = 1.5
+        NSColor.white.setStroke()
+        outline.stroke()
+        let label = NSAttributedString(string: " \(Int(crop.width)) × \(Int(crop.height)) ", attributes: [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium),
+            .foregroundColor: NSColor.white,
+            .backgroundColor: NSColor.black.withAlphaComponent(0.6)
+        ])
+        label.draw(at: CGPoint(x: cropRect.minX, y: max(area.minY, cropRect.minY - 18)))
+    }
+
+    /// Resize handles (view coordinates) of an annotation defined by two points.
+    private func handles(for annotation: Annotation) -> [CGPoint] {
+        guard annotation.tool.hasEndpoints, annotation.points.count == 2 else { return [] }
+        return annotation.points.map(viewPoint)
     }
 
     override func resetCursorRects() {
-        addCursorRect(imageRect, cursor: tool == .text ? .iBeam : .crosshair)
+        let cursor: NSCursor
+        switch tool {
+        case .select: cursor = .arrow
+        case .text: cursor = .iBeam
+        default: cursor = .crosshair
+        }
+        addCursorRect(imageAreaInView, cursor: cursor)
     }
 
     override func setFrameSize(_ newSize: NSSize) {
@@ -275,11 +464,6 @@ final class AnnotationCanvas: NSView, NSTextFieldDelegate {
     }
 
     // MARK: Mouse
-
-    private func imagePoint(_ event: NSEvent) -> CGPoint {
-        AnnotationGeometry.imagePoint(convert(event.locationInWindow, from: nil),
-                                      imageRect: imageRect, imageSize: document.pixelSize)
-    }
 
     private func newAnnotation(at point: CGPoint) -> Annotation {
         let s = document.scale
@@ -301,29 +485,66 @@ final class AnnotationCanvas: NSView, NSTextFieldDelegate {
         let hadText = textField != nil
         commitText()
         window?.makeFirstResponder(self)
-        let viewPoint = convert(event.locationInWindow, from: nil)
-        guard imageRect.contains(viewPoint) else { return }
-        let point = imagePoint(event)
+        let viewLocation = convert(event.locationInWindow, from: nil)
+        let point = imagePoint(viewLocation)
+        if tool == .select {
+            if let index = selection, history.items.indices.contains(index),
+               let handle = handles(for: history.items[index]).firstIndex(where: {
+                   hypot($0.x - viewLocation.x, $0.y - viewLocation.y) <= 8 }) {
+                drag = .resize(point: handle, original: history.items[index])
+                return
+            }
+            if let index = AnnotationGeometry.topmost(in: history.items, at: point, tolerance: 6 / max(viewScale, 0.01),
+                                                      textSize: document.textSize) {
+                selection = index
+                drag = .move(start: point, original: history.items[index])
+            } else {
+                selection = nil
+            }
+            return
+        }
+        guard imageAreaInView.contains(viewLocation) else { return }
         switch tool {
         case .text:
             if !hadText { beginText(at: point) }
         case .counter:
             history.add(newAnnotation(at: point))
             changed()
+        case .crop:
+            drag = .crop(start: point)
+            cropPreview = CGRect(origin: point, size: .zero)
         default:
             current = newAnnotation(at: point)
         }
     }
 
     override func mouseDragged(with event: NSEvent) {
-        guard var annotation = current else { return }
         let point = imagePoint(event)
+        let shift = event.modifierFlags.contains(.shift)
+        if let drag = drag {
+            switch drag {
+            case .move(let start, let original):
+                preview = AnnotationGeometry.translated(original, by: CGPoint(x: point.x - start.x, y: point.y - start.y))
+            case .resize(let index, let original):
+                var resized = original
+                resized.points[index] = shift
+                    ? AnnotationGeometry.constrain(start: original.points[1 - index], end: point, tool: original.tool)
+                    : point
+                preview = resized
+            case .crop(let start):
+                let end = shift ? AnnotationGeometry.constrain(start: start, end: point, tool: .crop) : point
+                cropPreview = AnnotationGeometry.rect(from: start, to: end).intersection(imageVisibleRect)
+            }
+            needsDisplay = true
+            return
+        }
+        guard var annotation = current else { return }
         if annotation.tool.isFreehand {
             if let last = annotation.points.last, hypot(last.x - point.x, last.y - point.y) >= 1 {
                 annotation.points.append(point)
             }
         } else {
-            annotation.points[1] = event.modifierFlags.contains(.shift)
+            annotation.points[1] = shift
                 ? AnnotationGeometry.constrain(start: annotation.points[0], end: point, tool: annotation.tool)
                 : point
         }
@@ -332,11 +553,43 @@ final class AnnotationCanvas: NSView, NSTextFieldDelegate {
     }
 
     override func mouseUp(with event: NSEvent) {
+        if let finished = drag {
+            drag = nil
+            switch finished {
+            case .move, .resize:
+                if let index = selection, let preview = preview { history.replace(at: index, with: preview) }
+                preview = nil
+            case .crop:
+                if let crop = cropPreview?.integral.intersection(imageVisibleRect),
+                   crop.width >= 8 * document.scale, crop.height >= 8 * document.scale {
+                    history.setCrop(crop)
+                }
+                cropPreview = nil
+                window?.invalidateCursorRects(for: self)
+            }
+            changed()
+            return
+        }
         guard let annotation = current else { return }
         current = nil
         if AnnotationGeometry.isMeaningful(annotation, minimum: 3 * document.scale) {
             history.add(annotation)
         }
+        changed()
+    }
+
+    /// Applies the toolbar colour and size to the selected annotation.
+    private func applyStyleToSelection() {
+        guard tool == .select, let index = selection, history.items.indices.contains(index) else { return }
+        var styled = history.items[index]
+        let s = document.scale
+        if styled.tool != .pixelate && styled.tool != .blur { styled.color = color }
+        switch styled.tool {
+        case .text: styled.fontSize = size.fontSize * s
+        case .counter: styled.fontSize = size.counterRadius * s
+        default: styled.lineWidth = size.lineWidth * s
+        }
+        history.replace(at: index, with: styled)
         changed()
     }
 
@@ -351,9 +604,26 @@ final class AnnotationCanvas: NSView, NSTextFieldDelegate {
             }
         }
         switch event.keyCode {
-        case 51, 117: undo() // delete / forward delete
+        case 51, 117: // delete / forward delete
+            if let index = selection {
+                selection = nil
+                history.remove(at: index)
+                changed()
+            } else {
+                undo()
+            }
         case 53: // escape
-            if current != nil { current = nil; needsDisplay = true } else { super.keyDown(with: event) }
+            if current != nil || drag != nil {
+                current = nil
+                drag = nil
+                preview = nil
+                cropPreview = nil
+                needsDisplay = true
+            } else if selection != nil {
+                selection = nil
+            } else {
+                super.keyDown(with: event)
+            }
         default: super.keyDown(with: event)
         }
     }
@@ -365,15 +635,14 @@ final class AnnotationCanvas: NSView, NSTextFieldDelegate {
         let field = NSTextField(string: "")
         field.placeholderString = "Escribe y pulsa Intro"
         field.font = NSFont.systemFont(ofSize: max(11, size.fontSize * document.scale * viewScale), weight: .bold)
-        field.textColor = NSColor(srgbRed: color.r, green: color.g, blue: color.b, alpha: 1)
+        field.textColor = AnnotationImage.color(color)
         field.backgroundColor = NSColor.textBackgroundColor.withAlphaComponent(0.85)
         field.drawsBackground = true
         field.isBordered = true
         field.focusRingType = .none
         field.delegate = self
         field.sizeToFit()
-        let rect = imageRect
-        let origin = CGPoint(x: rect.minX + point.x * viewScale, y: rect.minY + point.y * viewScale)
+        let origin = viewPoint(point)
         field.frame = CGRect(x: origin.x, y: origin.y, width: max(220, field.frame.width), height: field.frame.height)
         addSubview(field)
         textField = field
@@ -404,10 +673,8 @@ final class AnnotationCanvas: NSView, NSTextFieldDelegate {
         let text = field.stringValue
         field.delegate = nil
         field.removeFromSuperview()
-        var annotation = newAnnotation(at: textOrigin)
-        annotation.tool = .text
-        annotation.fontSize = size.fontSize * document.scale
-        annotation.text = text
+        let annotation = Annotation(tool: .text, points: [textOrigin], color: color, lineWidth: 0,
+                                    fontSize: size.fontSize * document.scale, text: text)
         if AnnotationGeometry.isMeaningful(annotation) {
             history.add(annotation)
         }
@@ -416,17 +683,18 @@ final class AnnotationCanvas: NSView, NSTextFieldDelegate {
 
     // MARK: Actions
 
-    func undo() { commitText(); history.undo(); changed() }
-    func redo() { commitText(); history.redo(); changed() }
-    func clear() { commitText(); history.clear(); changed() }
+    func undo() { commitText(); selection = nil; history.undo(); changed() }
+    func redo() { commitText(); selection = nil; history.redo(); changed() }
+    func clear() { commitText(); selection = nil; history.clear(); changed() }
 
     func pngData() -> Data? {
         commitText()
-        return document.pngData(with: history.items)
+        return document.pngData(history.state, background: background)
     }
 
     private func changed() {
         needsDisplay = true
+        window?.invalidateCursorRects(for: self)
         onStateChange?()
     }
 }
@@ -474,8 +742,12 @@ final class AnnotationWindowController: NSWindowController, NSWindowDelegate {
     private var redoButton: NSButton!
     private var clearButton: NSButton!
     /// Annotations at the last copy/save, to know if there are unsaved changes.
-    private var exported: [Annotation] = []
-    private var hasUnexportedChanges: Bool { canvas.history.items != exported }
+    private var exported = EditorState()
+    private var exportedBackground = BackgroundStyle.none
+    private var hasUnexportedChanges: Bool {
+        canvas.state != exported || canvas.background != exportedBackground
+    }
+    private let backgroundPopup = NSPopUpButton()
 
     init(document: AnnotationImage, save: @escaping (Data) -> Bool, copy: @escaping (Data) -> Void) {
         canvas = AnnotationCanvas(document: document)
@@ -485,13 +757,13 @@ final class AnnotationWindowController: NSWindowController, NSWindowDelegate {
         let visible = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame ?? CGRect(x: 0, y: 0, width: 1280, height: 800)
         let natural = CGSize(width: document.pixelSize.width / document.scale + 40,
                              height: document.pixelSize.height / document.scale + 130)
-        let size = CGSize(width: min(max(natural.width, 860), visible.width * 0.92),
+        let size = CGSize(width: min(max(natural.width, 960), visible.width * 0.92),
                           height: min(max(natural.height, 480), visible.height * 0.92))
         let window = AnnotationWindow(contentRect: NSRect(origin: .zero, size: size),
                                       styleMask: [.titled, .closable, .resizable, .miniaturizable],
                                       backing: .buffered, defer: false)
         window.title = "Anotar captura"
-        window.minSize = NSSize(width: 860, height: 420)
+        window.minSize = NSSize(width: 960, height: 420)
         window.isReleasedWhenClosed = false
         window.center()
         super.init(window: window)
@@ -552,7 +824,7 @@ final class AnnotationWindowController: NSWindowController, NSWindowDelegate {
         top.spacing = 10
         top.alignment = .centerY
 
-        let hint = NSTextField(labelWithString: "Mayús: formas proporcionales · Supr: deshacer · Letras: cambiar herramienta")
+        let hint = NSTextField(labelWithString: "V: seleccionar y mover · Mayús: proporciones · Supr: borrar · Letras: herramientas")
         hint.textColor = .secondaryLabelColor
         hint.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         hint.lineBreakMode = .byTruncatingTail
@@ -563,7 +835,12 @@ final class AnnotationWindowController: NSWindowController, NSWindowDelegate {
         done.bezelColor = .controlAccentColor
         done.keyEquivalent = "\r"
         done.keyEquivalentModifierMask = [.command]
-        let bottom = NSStackView(views: [hint, copy, save, done])
+        for style in BackgroundStyle.allCases { backgroundPopup.addItem(withTitle: style.title) }
+        backgroundPopup.target = self
+        backgroundPopup.action = #selector(backgroundChanged)
+        backgroundPopup.toolTip = "Fondo con margen y sombra para compartir"
+        let backgroundLabel = NSTextField(labelWithString: "Fondo:")
+        let bottom = NSStackView(views: [hint, backgroundLabel, backgroundPopup, copy, save, done])
         bottom.orientation = .horizontal
         bottom.spacing = 10
         bottom.alignment = .centerY
@@ -597,6 +874,9 @@ final class AnnotationWindowController: NSWindowController, NSWindowDelegate {
         case .text: return "textformat"
         case .counter: return "1.circle"
         case .pixelate: return "square.grid.3x3.fill"
+        case .select: return "cursorarrow"
+        case .blur: return "drop.fill"
+        case .crop: return "crop"
         }
     }
 
@@ -632,6 +912,9 @@ final class AnnotationWindowController: NSWindowController, NSWindowDelegate {
 
     @objc private func toolChanged() { canvas.tool = AnnotationTool.allCases[toolControl.selectedSegment] }
     @objc private func colorChanged() { canvas.color = Self.palette[colorControl.selectedSegment].1 }
+    @objc private func backgroundChanged() {
+        canvas.background = BackgroundStyle(rawValue: backgroundPopup.indexOfSelectedItem) ?? .none
+    }
     @objc private func sizeChanged() { canvas.size = StrokeSize(rawValue: sizeControl.selectedSegment) ?? .medium }
     @objc private func undo() { canvas.undo() }
     @objc private func redo() { canvas.redo() }
@@ -656,7 +939,8 @@ final class AnnotationWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func markDone() {
-        exported = canvas.history.items
+        exported = canvas.state
+        exportedBackground = canvas.background
         window?.isDocumentEdited = false
     }
 

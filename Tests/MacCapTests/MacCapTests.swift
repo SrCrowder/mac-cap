@@ -109,7 +109,70 @@ final class AnnotationGeometryTests: XCTestCase {
     }
 }
 
+final class SelectionGeometryTests: XCTestCase {
+    private let red = RGBA(r: 1, g: 0, b: 0)
+    private let noText: (Annotation) -> CGSize = { _ in .zero }
+
+    func testHitTestLinesAndBoxes() {
+        let line = Annotation(tool: .line, points: [.zero, CGPoint(x: 100, y: 0)], color: red, lineWidth: 4)
+        XCTAssertTrue(AnnotationGeometry.hitTest(line, at: CGPoint(x: 50, y: 5), tolerance: 4, textSize: noText))
+        XCTAssertFalse(AnnotationGeometry.hitTest(line, at: CGPoint(x: 50, y: 20), tolerance: 4, textSize: noText))
+        let box = Annotation(tool: .rectangle, points: [CGPoint(x: 10, y: 10), CGPoint(x: 60, y: 40)], color: red, lineWidth: 2)
+        XCTAssertTrue(AnnotationGeometry.hitTest(box, at: CGPoint(x: 30, y: 30), tolerance: 0, textSize: noText))
+        XCTAssertFalse(AnnotationGeometry.hitTest(box, at: CGPoint(x: 90, y: 90), tolerance: 4, textSize: noText))
+        let text = Annotation(tool: .text, points: [CGPoint(x: 200, y: 200)], color: red, lineWidth: 0, text: "Hola")
+        let size: (Annotation) -> CGSize = { _ in CGSize(width: 50, height: 20) }
+        XCTAssertTrue(AnnotationGeometry.hitTest(text, at: CGPoint(x: 240, y: 215), tolerance: 0, textSize: size))
+    }
+
+    func testTopmostPrefersLastDrawn() {
+        let a = Annotation(tool: .rectangle, points: [.zero, CGPoint(x: 100, y: 100)], color: red, lineWidth: 2)
+        let b = Annotation(tool: .ellipse, points: [CGPoint(x: 50, y: 50), CGPoint(x: 80, y: 80)], color: red, lineWidth: 2)
+        XCTAssertEqual(AnnotationGeometry.topmost(in: [a, b], at: CGPoint(x: 60, y: 60), tolerance: 0, textSize: noText), 1)
+        XCTAssertEqual(AnnotationGeometry.topmost(in: [a, b], at: CGPoint(x: 10, y: 10), tolerance: 0, textSize: noText), 0)
+        XCTAssertNil(AnnotationGeometry.topmost(in: [a, b], at: CGPoint(x: 300, y: 10), tolerance: 0, textSize: noText))
+    }
+
+    func testTranslatedAndBounds() {
+        let counter = Annotation(tool: .counter, points: [CGPoint(x: 10, y: 10)], color: red, lineWidth: 0, fontSize: 5)
+        XCTAssertEqual(AnnotationGeometry.bounds(of: counter, textSize: noText), CGRect(x: 5, y: 5, width: 10, height: 10))
+        let moved = AnnotationGeometry.translated(counter, by: CGPoint(x: 3, y: -2))
+        XCTAssertEqual(moved.points, [CGPoint(x: 13, y: 8)])
+    }
+
+    func testBackgroundLayout() {
+        XCTAssertEqual(BackgroundStyle.none.layout(content: CGSize(width: 100, height: 50)).size, CGSize(width: 100, height: 50))
+        let layout = BackgroundStyle.ocean.layout(content: CGSize(width: 1000, height: 500))
+        XCTAssertEqual(layout.contentOrigin, CGPoint(x: 70, y: 70))
+        XCTAssertEqual(layout.size, CGSize(width: 1140, height: 640))
+    }
+}
+
 final class AnnotationHistoryTests: XCTestCase {
+    func testReplaceRemoveAndCrop() {
+        let red = RGBA(r: 1, g: 0, b: 0)
+        let a = Annotation(tool: .counter, points: [.zero], color: red, lineWidth: 0, number: 1)
+        var history = AnnotationHistory()
+        history.add(a)
+        var b = a
+        b.number = 7
+        history.replace(at: 0, with: b)
+        XCTAssertEqual(history.items, [b])
+        history.setCrop(CGRect(x: 1, y: 2, width: 3, height: 4))
+        history.clear()
+        XCTAssertEqual(history.items, [])
+        XCTAssertEqual(history.crop, CGRect(x: 1, y: 2, width: 3, height: 4), "clear keeps the crop")
+        history.undo()
+        history.undo()
+        XCTAssertNil(history.crop)
+        XCTAssertEqual(history.items, [b])
+        history.remove(at: 0)
+        XCTAssertTrue(history.items.isEmpty)
+        history.undo()
+        history.undo()
+        XCTAssertEqual(history.items, [a])
+    }
+
     func testUndoRedoClear() {
         let a = Annotation(tool: .counter, points: [.zero], color: RGBA(r: 0, g: 0, b: 0), lineWidth: 0, number: 1)
         var b = a
@@ -247,6 +310,31 @@ final class RenderingTests: XCTestCase {
                                                                         height: qr.extent.height + 80)))
         let cgImage = try XCTUnwrap(CIContext().createCGImage(padded, from: padded.extent))
         XCTAssertEqual(try BarcodeReader.read(cgImage), ["https://example.com/maccap"])
+    }
+
+    func testCropAndBackgroundExport() throws {
+        let document = try makeDocument()
+        let state = EditorState(items: [], crop: CGRect(x: 100, y: 50, width: 200, height: 100))
+        let cropped = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(document.pngData(state, background: .none))))
+        XCTAssertEqual(cropped.pixelsWide, 200)
+        XCTAssertEqual(cropped.pixelsHigh, 100)
+        let framed = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(document.pngData(state, background: .sunset))))
+        let layout = BackgroundStyle.sunset.layout(content: CGSize(width: 200, height: 100))
+        XCTAssertEqual(framed.pixelsWide, Int(layout.size.width))
+        // The corner is gradient (warm, not white or black).
+        let corner = framed.colorAt(x: 2, y: 2)!.usingColorSpace(.deviceRGB)!
+        XCTAssertGreaterThan(corner.redComponent, 0.8)
+        XCTAssertLessThan(corner.greenComponent, 0.7)
+    }
+
+    func testBlurChangesPixels() throws {
+        let document = try makeDocument()
+        let blur = Annotation(tool: .blur, points: [CGPoint(x: 0, y: 0), CGPoint(x: 400, y: 300)],
+                              color: RGBA(r: 1, g: 0, b: 0), lineWidth: 4)
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(document.pngData(with: [blur]))))
+        let a = bitmap.colorAt(x: 200, y: 150)!.usingColorSpace(.deviceRGB)!.redComponent
+        let b = bitmap.colorAt(x: 202, y: 150)!.usingColorSpace(.deviceRGB)!.redComponent
+        XCTAssertLessThan(abs(a - b), 0.2, "stripes are blurred")
     }
 }
 #endif

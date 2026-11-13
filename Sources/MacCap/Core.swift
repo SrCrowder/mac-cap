@@ -95,10 +95,14 @@ enum CaptureNaming {
 // MARK: - Annotation model
 
 enum AnnotationTool: String, CaseIterable {
-    case rectangle, ellipse, arrow, line, pen, highlighter, text, counter, pixelate
+    case select, rectangle, ellipse, arrow, line, pen, highlighter, text, counter, pixelate, blur, crop
 
     var title: String {
         switch self {
+        case .select: return "Seleccionar y mover"
+        case .blur: return "Difuminar"
+        case .crop: return "Recortar"
+
         case .rectangle: return "Rectángulo"
         case .ellipse: return "Elipse"
         case .arrow: return "Flecha"
@@ -114,6 +118,10 @@ enum AnnotationTool: String, CaseIterable {
     /// Single-key shortcut inside the editor.
     var key: Character {
         switch self {
+        case .select: return "v"
+        case .blur: return "d"
+        case .crop: return "c"
+
         case .rectangle: return "r"
         case .ellipse: return "o"
         case .arrow: return "a"
@@ -127,7 +135,9 @@ enum AnnotationTool: String, CaseIterable {
     }
 
     var isFreehand: Bool { self == .pen || self == .highlighter }
-    var isBoxed: Bool { self == .rectangle || self == .ellipse || self == .pixelate }
+    var isBoxed: Bool { [.rectangle, .ellipse, .pixelate, .blur, .crop].contains(self) }
+    /// Tools whose annotation is defined by two points that can be dragged to resize.
+    var hasEndpoints: Bool { isBoxed || isLinear }
     var isLinear: Bool { self == .arrow || self == .line }
 }
 
@@ -238,7 +248,8 @@ enum AnnotationGeometry {
             let dx = annotation.points[1].x - annotation.points[0].x
             let dy = annotation.points[1].y - annotation.points[0].y
             return (dx * dx + dy * dy).squareRoot() >= minimum
-        case .rectangle, .ellipse, .pixelate:
+        case .select: return false
+        case .rectangle, .ellipse, .pixelate, .blur, .crop:
             guard annotation.points.count == 2 else { return false }
             let r = rect(from: annotation.points[0], to: annotation.points[1])
             return r.width >= minimum && r.height >= minimum
@@ -262,6 +273,58 @@ enum AnnotationGeometry {
         (annotations.filter { $0.tool == .counter }.map(\.number).max() ?? 0) + 1
     }
 
+    static func translated(_ annotation: Annotation, by delta: CGPoint) -> Annotation {
+        var moved = annotation
+        moved.points = annotation.points.map { CGPoint(x: $0.x + delta.x, y: $0.y + delta.y) }
+        return moved
+    }
+
+    static func distance(from p: CGPoint, toSegment a: CGPoint, _ b: CGPoint) -> CGFloat {
+        let dx = b.x - a.x, dy = b.y - a.y
+        let lengthSquared = dx * dx + dy * dy
+        guard lengthSquared > 0 else { return hypot(p.x - a.x, p.y - a.y) }
+        let t = min(max(((p.x - a.x) * dx + (p.y - a.y) * dy) / lengthSquared, 0), 1)
+        return hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy))
+    }
+
+    /// Bounding box in image pixels. `textSize` measures text annotations (needs fonts).
+    static func bounds(of a: Annotation, textSize: (Annotation) -> CGSize) -> CGRect {
+        guard let first = a.points.first else { return .null }
+        switch a.tool {
+        case .text:
+            return CGRect(origin: first, size: textSize(a))
+        case .counter:
+            return CGRect(x: first.x - a.fontSize, y: first.y - a.fontSize, width: a.fontSize * 2, height: a.fontSize * 2)
+        default:
+            let xs = a.points.map(\.x), ys = a.points.map(\.y)
+            let box = CGRect(x: xs.min()!, y: ys.min()!, width: xs.max()! - xs.min()!, height: ys.max()! - ys.min()!)
+            let pad = a.tool == .highlighter ? a.lineWidth * 2 : a.lineWidth / 2
+            return box.insetBy(dx: -pad, dy: -pad)
+        }
+    }
+
+    /// Whether `point` (image pixels) touches the annotation, with `tolerance` pixels of slack.
+    static func hitTest(_ a: Annotation, at point: CGPoint, tolerance: CGFloat,
+                        textSize: (Annotation) -> CGSize) -> Bool {
+        switch a.tool {
+        case .line, .arrow, .pen, .highlighter:
+            guard let first = a.points.first else { return false }
+            let reach = tolerance + (a.tool == .highlighter ? a.lineWidth * 2 : a.lineWidth / 2)
+            if a.points.count == 1 { return hypot(point.x - first.x, point.y - first.y) <= reach }
+            return zip(a.points, a.points.dropFirst()).contains { distance(from: point, toSegment: $0, $1) <= reach }
+        default:
+            return bounds(of: a, textSize: textSize).insetBy(dx: -tolerance, dy: -tolerance).contains(point)
+        }
+    }
+
+    /// Index of the topmost annotation under `point`.
+    static func topmost(in annotations: [Annotation], at point: CGPoint, tolerance: CGFloat,
+                        textSize: (Annotation) -> CGSize) -> Int? {
+        annotations.indices.reversed().first {
+            hitTest(annotations[$0], at: point, tolerance: tolerance, textSize: textSize)
+        }
+    }
+
     /// Pixel block size for the pixelate tool: well above normal text height (≈13 pt) so each block
     /// mixes several glyphs and the text cannot be reconstructed from the averages.
     static func pixelateBlock(for imageSize: CGSize, scale: CGFloat) -> CGFloat {
@@ -269,39 +332,112 @@ enum AnnotationGeometry {
     }
 }
 
-/// Undo/redo history for a list of annotations.
-struct AnnotationHistory {
-    private(set) var items: [Annotation] = []
-    private var undoStack: [[Annotation]] = []
-    private var redoStack: [[Annotation]] = []
+/// Everything the user can undo in the editor.
+struct EditorState: Equatable {
+    var items: [Annotation] = []
+    /// Visible part of the image, in image pixels; `nil` = whole image.
+    var crop: CGRect?
+}
 
+/// Undo/redo history of the editor state.
+struct AnnotationHistory {
+    private(set) var state = EditorState()
+    private var undoStack: [EditorState] = []
+    private var redoStack: [EditorState] = []
+
+    var items: [Annotation] { state.items }
+    var crop: CGRect? { state.crop }
     var canUndo: Bool { !undoStack.isEmpty }
     var canRedo: Bool { !redoStack.isEmpty }
 
     mutating func add(_ annotation: Annotation) {
-        apply(items + [annotation])
+        var next = state
+        next.items.append(annotation)
+        apply(next)
     }
 
+    mutating func replace(at index: Int, with annotation: Annotation) {
+        guard state.items.indices.contains(index), state.items[index] != annotation else { return }
+        var next = state
+        next.items[index] = annotation
+        apply(next)
+    }
+
+    mutating func remove(at index: Int) {
+        guard state.items.indices.contains(index) else { return }
+        var next = state
+        next.items.remove(at: index)
+        apply(next)
+    }
+
+    mutating func setCrop(_ crop: CGRect?) {
+        guard crop != state.crop else { return }
+        var next = state
+        next.crop = crop
+        apply(next)
+    }
+
+    /// Removes every annotation (the crop is kept).
     mutating func clear() {
-        guard !items.isEmpty else { return }
-        apply([])
+        guard !state.items.isEmpty else { return }
+        apply(EditorState(items: [], crop: state.crop))
     }
 
     mutating func undo() {
         guard let previous = undoStack.popLast() else { return }
-        redoStack.append(items)
-        items = previous
+        redoStack.append(state)
+        state = previous
     }
 
     mutating func redo() {
         guard let next = redoStack.popLast() else { return }
-        undoStack.append(items)
-        items = next
+        undoStack.append(state)
+        state = next
     }
 
-    private mutating func apply(_ newItems: [Annotation]) {
-        undoStack.append(items)
+    private mutating func apply(_ next: EditorState) {
+        undoStack.append(state)
         redoStack.removeAll()
-        items = newItems
+        state = next
+    }
+}
+
+// MARK: - Background for sharing
+
+/// Optional gradient frame around the exported image (padding, rounded corners and shadow).
+enum BackgroundStyle: Int, CaseIterable {
+    case none, ocean, sunset, forest, candy, graphite, light
+
+    var title: String {
+        switch self {
+        case .none: return "Sin fondo"
+        case .ocean: return "Océano"
+        case .sunset: return "Atardecer"
+        case .forest: return "Bosque"
+        case .candy: return "Caramelo"
+        case .graphite: return "Grafito"
+        case .light: return "Claro"
+        }
+    }
+
+    /// Gradient start and end colours.
+    var colors: (RGBA, RGBA)? {
+        switch self {
+        case .none: return nil
+        case .ocean: return (RGBA(r: 0.24, g: 0.55, b: 1), RGBA(r: 0.45, g: 0.25, b: 0.9))
+        case .sunset: return (RGBA(r: 1, g: 0.55, b: 0.3), RGBA(r: 0.93, g: 0.25, b: 0.5))
+        case .forest: return (RGBA(r: 0.2, g: 0.7, b: 0.5), RGBA(r: 0.1, g: 0.4, b: 0.45))
+        case .candy: return (RGBA(r: 1, g: 0.6, b: 0.8), RGBA(r: 0.6, g: 0.7, b: 1))
+        case .graphite: return (RGBA(r: 0.3, g: 0.32, b: 0.36), RGBA(r: 0.12, g: 0.13, b: 0.15))
+        case .light: return (RGBA(r: 0.96, g: 0.96, b: 0.97), RGBA(r: 0.86, g: 0.87, b: 0.9))
+        }
+    }
+
+    /// Final canvas size and where the image goes inside it, for an image of `content` pixels.
+    func layout(content: CGSize) -> (size: CGSize, contentOrigin: CGPoint) {
+        guard self != .none else { return (content, .zero) }
+        let padding = max(24, (max(content.width, content.height) * 0.07).rounded())
+        return (CGSize(width: content.width + padding * 2, height: content.height + padding * 2),
+                CGPoint(x: padding, y: padding))
     }
 }
