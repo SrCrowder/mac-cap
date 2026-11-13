@@ -364,7 +364,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         flash()
     }
 
-    private func annotateFile(at url: URL) {
+    private func annotateImage(at url: URL) {
         guard let data = try? Data(contentsOf: url), let document = AnnotationImage(data: data) else {
             showError("No se pudo abrir la imagen.", title: "Error")
             return
