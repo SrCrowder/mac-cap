@@ -49,15 +49,30 @@ Haz clic en el icono de la barra de menús:
 | Sección | Opciones |
 | --- | --- |
 | **Copiar al portapapeles** | Zona · Ventana · Pantalla completa |
-| **Guardar en archivo** | Zona · Ventana · Pantalla completa (PNG en el Escritorio o la carpeta que elijas) |
+| **Guardar en archivo** | Zona · Ventana · Pantalla completa (PNG, JPG o HEIC en el Escritorio o la carpeta que elijas) |
 | **Anotar** | Zona, ventana o pantalla completa y abrir el editor · Anotar la imagen del portapapeles o de un archivo |
-| **Extras** | Copiar texto de una zona (OCR) · Grabar pantalla (abre la herramienta nativa de macOS) · Abrir carpeta de capturas |
-| **Opciones** | Retardo 3/5/10 s · Incluir cursor · Sombra en ventanas · Sonido · Carpeta de destino · Preguntar dónde guardar · Atajos globales · Abrir al iniciar sesión |
+| **Extras** | Copiar texto de una zona (OCR) · Leer código QR · Fijar zona en pantalla · Cuentagotas |
+| **Grabar y medir** | Grabar zona en MP4 · Grabar zona como GIF · Captura con scroll · Regla · Herramienta nativa de macOS |
+| **Recientes** | Las últimas 20 capturas: copiar, anotar, fijar, guardar o mostrar en Finder |
+| **Opciones** | Retardo · Cursor · Sombra · Sonido · Formato · Carpeta · Miniatura · Historial · Atajos · Idioma · Inicio de sesión · Actualizaciones |
 
 En zona: arrastra para seleccionar, **espacio** cambia a modo ventana y **Esc** cancela.
-Al copiar o guardar, el icono muestra un ✓ un momento.
 
-### Atajos globales (se pueden desactivar en Opciones)
+- **Miniatura flotante:** tras copiar o guardar aparece una vista previa en la esquina. Clic para anotar,
+  arrástrala a otra app (Slack, Mail, Finder…), o usa sus botones para copiar, fijar o descartar.
+- **Fijar en pantalla:** la imagen flota encima de todo como referencia. Arrastra para moverla, bordes para
+  redimensionar, clic derecho para copiar, anotar o cambiar la opacidad, **Esc** para cerrar.
+- **Cuentagotas:** haz clic en cualquier píxel y se copia su color en hexadecimal (`#RRGGBB`).
+- **QR:** selecciona la zona con el código; el contenido se copia y, si es un enlace, ofrece abrirlo.
+- **Grabar zona (MP4/GIF):** elige la zona y pulsa **Detener** en el panel (o en el menú). Se guarda en la carpeta
+  de capturas. Las ventanas de MacCap no salen en la grabación.
+- **Captura con scroll:** elige la zona que se desplaza (el contenido de la página) y baja **despacio**; al pulsar
+  **Terminar** se abre la imagen completa en el editor. Si avisa «Más despacio…», vuelve un poco hacia arriba.
+- **Regla:** arrastra para medir en puntos y píxeles; **Mayús** para solo horizontal/vertical, **Esc** para salir.
+
+### Atajos de teclado
+
+Todas las acciones pueden tener atajo global: **Opciones → Configurar atajos…** Por defecto:
 
 | Atajo | Acción |
 | --- | --- |
@@ -67,13 +82,23 @@ Al copiar o guardar, el icono muestra un ✓ un momento.
 
 ### Editor de anotaciones
 
-Herramientas (con su tecla): **R** rectángulo · **O** elipse · **A** flecha · **L** línea · **P** lápiz ·
-**H** resaltador · **T** texto · **N** números (1, 2, 3…) · **B** pixelar/difuminar.
+Herramientas (con su tecla): **V** seleccionar y mover · **R** rectángulo · **O** elipse · **A** flecha ·
+**L** línea · **P** lápiz · **H** resaltador · **T** texto · **N** números (1, 2, 3…) · **B** pixelar ·
+**D** difuminar · **C** recortar.
 
+- **Seleccionar (V):** haz clic en una anotación para moverla; arrastra sus puntos para redimensionar formas,
+  flechas y líneas; cambia su color o grosor con la barra; **Supr** la borra.
 - 8 colores y 3 grosores. **Mayús** al arrastrar hace cuadrados/círculos y líneas a 45°.
-- **⌘Z / ⇧⌘Z** deshacer y rehacer, **Supr** deshace la última, papelera para borrar todo.
+- **Recortar (C):** arrastra la zona que quieres conservar (⌘Z lo deshace).
+- **Fondo:** añade margen, degradado, esquinas redondeadas y sombra para compartir.
+- **Pixelar** y **difuminar** ocultan el contenido de forma que no se puede recuperar.
+- **⌘Z / ⇧⌘Z** deshacer y rehacer, papelera para borrar todo.
 - **⌘C** copia, **⌘S** guarda, **⌘↩** copia y cierra. Si cierras sin copiar ni guardar, pregunta antes.
 - La imagen se exporta a resolución completa (Retina incluida).
+
+### Idioma
+
+Español o inglés según el sistema, o el que elijas en **Opciones → Idioma**.
 
 ## Compilar en local
 
