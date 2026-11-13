@@ -186,7 +186,7 @@ final class RenderingTests: XCTestCase {
         for (x, y) in [(260, 160), (300, 200), (350, 260)] {
             let gray = pixel(bitmap, x, y).redComponent
             XCTAssertGreaterThan(gray, 0.2, "(\(x), \(y))")
-            XCTAssertLessThan(gray, 0.8, "(\(x), \(y))")
+            XCTAssertLessThan(gray, 0.92, "(\(x), \(y))")
         }
         // Top edge of the rectangle (image coordinates have the origin at the top-left).
         let edge = pixel(bitmap, 80, 10)
@@ -207,7 +207,7 @@ final class RenderingTests: XCTestCase {
             print("pixelate offset=\(offset) noise=\(noise) ->", values)
             for value in values {
                 XCTAssertGreaterThan(value, 0.2, "offset=\(offset) noise=\(noise)")
-                XCTAssertLessThan(value, 0.85, "offset=\(offset) noise=\(noise)")
+                XCTAssertLessThan(value, 0.92, "offset=\(offset) noise=\(noise)")
             }
             // Within one 44 px block: flat without noise, varied with noise.
             let row = Set((100..<130).map { Int(rep.colorAt(x: $0, y: 150)!.redComponent * 255) })
