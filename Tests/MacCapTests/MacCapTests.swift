@@ -200,7 +200,9 @@ final class AnnotationHistoryTests: XCTestCase {
 
 #if os(macOS)
 import AppKit
+import AVFoundation
 import CoreImage
+import ImageIO
 
 final class RenderingTests: XCTestCase {
     /// A 400×300 px image (Retina-like: 200×150 pt) with black text-like stripes on white.
@@ -335,6 +337,98 @@ final class RenderingTests: XCTestCase {
         let a = bitmap.colorAt(x: 200, y: 150)!.usingColorSpace(.deviceRGB)!.redComponent
         let b = bitmap.colorAt(x: 202, y: 150)!.usingColorSpace(.deviceRGB)!.redComponent
         XCTAssertLessThan(abs(a - b), 0.2, "stripes are blurred")
+    }
+}
+
+final class ScrollStitcherTests: XCTestCase {
+    /// A tall page with distinct horizontal bands of noise, so every row is recognisable.
+    private func makePage(width: Int, height: Int) throws -> CGImage {
+        let context = try XCTUnwrap(CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                                              space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                              bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue
+                                                | CGBitmapInfo.byteOrder32Little.rawValue))
+        var generator = SystemRandomNumberGenerator()
+        for y in stride(from: 0, to: height, by: 6) {
+            for x in stride(from: 0, to: width, by: 16) {
+                let gray = CGFloat(Int.random(in: 0...255, using: &generator)) / 255
+                context.setFillColor(CGColor(red: gray, green: gray, blue: gray, alpha: 1))
+                context.fill(CGRect(x: x, y: y, width: 16, height: 6))
+            }
+        }
+        return try XCTUnwrap(context.makeImage())
+    }
+
+    /// Frame of `height` rows starting at `top` (rows counted from the top of the page).
+    private func frame(of page: CGImage, top: Int, height: Int) throws -> CGImage {
+        try XCTUnwrap(page.cropping(to: CGRect(x: 0, y: top, width: page.width, height: height)))
+    }
+
+    func testStitchesScrolledFramesBackIntoThePage() throws {
+        let page = try makePage(width: 320, height: 900)
+        let stitcher = ScrollStitcher()
+        XCTAssertEqual(stitcher.add(try frame(of: page, top: 0, height: 300)), .first)
+        XCTAssertEqual(stitcher.add(try frame(of: page, top: 0, height: 300)), .unchanged)
+        XCTAssertEqual(stitcher.add(try frame(of: page, top: 120, height: 300)), .appended(rows: 120))
+        XCTAssertEqual(stitcher.add(try frame(of: page, top: 310, height: 300)), .appended(rows: 190))
+        XCTAssertEqual(stitcher.add(try frame(of: page, top: 600, height: 300)), .appended(rows: 290 - 0))
+        XCTAssertEqual(stitcher.height, 900)
+
+        let result = try XCTUnwrap(stitcher.compose())
+        XCTAssertEqual(result.height, 900)
+        let expected = NSBitmapImageRep(cgImage: page)
+        let actual = NSBitmapImageRep(cgImage: result)
+        for (x, y) in [(5, 5), (100, 200), (300, 450), (50, 700), (200, 895)] {
+            let e = expected.colorAt(x: x, y: y)!.usingColorSpace(.sRGB)!
+            let a = actual.colorAt(x: x, y: y)!.usingColorSpace(.sRGB)!
+            XCTAssertEqual(e.redComponent, a.redComponent, accuracy: 0.02, "(\(x), \(y))")
+        }
+    }
+
+    func testUnrelatedFrameIsLost() throws {
+        let stitcher = ScrollStitcher()
+        _ = stitcher.add(try frame(of: try makePage(width: 320, height: 300), top: 0, height: 300))
+        XCTAssertEqual(stitcher.add(try frame(of: try makePage(width: 320, height: 300), top: 0, height: 300)), .lost)
+    }
+}
+
+final class GIFExporterTests: XCTestCase {
+    func testConvertsVideoToLoopingGIF() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let movie = directory.appendingPathComponent("clip.mp4")
+        let writer = try AVAssetWriter(outputURL: movie, fileType: .mp4)
+        let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
+            AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: 160, AVVideoHeightKey: 120
+        ])
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+            kCVPixelBufferWidthKey as String: 160, kCVPixelBufferHeightKey as String: 120
+        ])
+        writer.add(input)
+        XCTAssertTrue(writer.startWriting())
+        writer.startSession(atSourceTime: .zero)
+        for index in 0..<20 {
+            while !input.isReadyForMoreMediaData { Thread.sleep(forTimeInterval: 0.01) }
+            var buffer: CVPixelBuffer?
+            CVPixelBufferPoolCreatePixelBuffer(nil, try XCTUnwrap(adaptor.pixelBufferPool), &buffer)
+            let pixelBuffer = try XCTUnwrap(buffer)
+            CVPixelBufferLockBaseAddress(pixelBuffer, [])
+            memset(CVPixelBufferGetBaseAddress(pixelBuffer), Int32(index * 12), CVPixelBufferGetDataSize(pixelBuffer))
+            CVPixelBufferUnlockBaseAddress(pixelBuffer, [])
+            adaptor.append(pixelBuffer, withPresentationTime: CMTime(value: CMTimeValue(index), timescale: 10))
+        }
+        input.markAsFinished()
+        let done = expectation(description: "written")
+        writer.finishWriting { done.fulfill() }
+        wait(for: [done], timeout: 20)
+        XCTAssertEqual(writer.status, .completed)
+
+        let gif = directory.appendingPathComponent("clip.gif")
+        try GIFExporter.convert(movie: movie, to: gif, fps: 10)
+        let source = try XCTUnwrap(CGImageSourceCreateWithURL(gif as CFURL, nil))
+        XCTAssertGreaterThanOrEqual(CGImageSourceGetCount(source), 15)
+        XCTAssertEqual(CGImageSourceGetType(source) as String?, "com.compuserve.gif")
     }
 }
 #endif

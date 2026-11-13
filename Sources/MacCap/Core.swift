@@ -70,9 +70,10 @@ enum ImageFormat: String, CaseIterable {
 // MARK: - File names
 
 enum CaptureNaming {
-    static func fileName(for date: Date, extension ext: String = "png", calendar: Calendar = .current) -> String {
+    static func fileName(for date: Date, extension ext: String = "png", prefix: String = "Captura",
+                         calendar: Calendar = .current) -> String {
         let c = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: date)
-        return String(format: "Captura %04d-%02d-%02d a las %02d.%02d.%02d.%@",
+        return String(format: "%@ %04d-%02d-%02d a las %02d.%02d.%02d.%@", prefix,
                       c.year ?? 0, c.month ?? 0, c.day ?? 0, c.hour ?? 0, c.minute ?? 0, c.second ?? 0, ext)
     }
 

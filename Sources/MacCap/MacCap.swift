@@ -1,5 +1,6 @@
 #if os(macOS)
 import AppKit
+import AVFoundation
 import Carbon.HIToolbox
 import UniformTypeIdentifiers
 
@@ -44,8 +45,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let recentsMenu = NSMenu()
     private var thumbnailCache: [String: NSImage] = [:]
     private var pinnedWindows: [PinnedImageWindow] = []
+    // Recording / scrolling capture in progress (RegionRecorder / ScrollCapture, macOS 12.3+).
+    private var activeRecorder: AnyObject?
+    private var activeScroll: AnyObject?
+    private var recordingAsGIF = false
+    private var scrollScale: CGFloat = 2
+    private var captureControls: CaptureControls?
+    private var stopItem: NSMenuItem!
     private lazy var thumbnail = CaptureThumbnail(actions: .init(
-        annotate: { [weak self] url in self?.annotateImage(at: url) },
+        annotate: { [weak self] url in
+            if Self.isImageFile(url) { self?.annotateImage(at: url) } else { NSWorkspace.shared.open(url) }
+        },
         pin: { [weak self] url in self?.pinFile(at: url) },
         copy: { [weak self] url in self?.copyFile(at: url) }))
 
@@ -79,6 +89,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.delegate = self
         menu.autoenablesItems = false
 
+        stopItem = item("■ Detener", #selector(stopActiveCapture), symbol: "stop.circle")
+        menu.addItem(stopItem)
         permissionItem = item("⚠️ Conceder permiso de grabación de pantalla…", #selector(openPermissionSettings))
         permissionSeparator = .separator()
         menu.addItem(permissionItem)
@@ -109,7 +121,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(item("Leer código QR de una zona…", #selector(readQRCode), symbol: "qrcode.viewfinder"))
         menu.addItem(item("Fijar zona en pantalla…", #selector(pinSelection), symbol: "pin"))
         menu.addItem(item("Cuentagotas (copiar color)…", #selector(pickColor), symbol: "eyedropper"))
-        menu.addItem(item("Grabar pantalla / herramienta nativa…", #selector(openNativeToolbar), symbol: "record.circle"))
+        menu.addItem(.separator())
+
+        menu.addItem(header("Grabar y medir"))
+        menu.addItem(item("Grabar zona en vídeo (MP4)…", #selector(recordVideo), symbol: "record.circle"))
+        menu.addItem(item("Grabar zona como GIF…", #selector(recordGIF), symbol: "film"))
+        menu.addItem(item("Captura con scroll…", #selector(startScrollCapture), symbol: "arrow.down.doc"))
+        menu.addItem(item("Regla…", #selector(showRuler), symbol: "ruler"))
+        menu.addItem(item("Herramienta nativa de macOS…", #selector(openNativeToolbar), symbol: "camera.aperture"))
+        menu.addItem(.separator())
         menu.addItem(item("Abrir carpeta de capturas", #selector(openSaveFolder), symbol: "folder"))
         let recents = NSMenuItem(title: "Recientes", action: nil, keyEquivalent: "")
         recents.image = NSImage(systemSymbolName: "clock.arrow.circlepath", accessibilityDescription: nil)
@@ -187,6 +207,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func menuWillOpen(_ menu: NSMenu) {
+        stopItem.isHidden = activeRecorder == nil && activeScroll == nil
+        stopItem.title = activeScroll != nil ? "■ Terminar captura con scroll" : "■ Detener grabación"
         let granted = CGPreflightScreenCaptureAccess()
         permissionItem.isHidden = granted
         permissionSeparator.isHidden = granted
@@ -358,9 +380,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         thumbnailCache.removeAll()
     }
 
+    private static func isImageFile(_ url: URL) -> Bool {
+        ["png", "jpg", "jpeg", "heic", "tiff"].contains(url.pathExtension.lowercased())
+    }
+
     private func copyFile(at url: URL) {
-        guard let data = try? Data(contentsOf: url) else { return }
-        copy(data)
+        if Self.isImageFile(url), let data = try? Data(contentsOf: url) {
+            copy(data)
+        } else {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.writeObjects([url as NSURL])
+        }
         flash()
     }
 
@@ -373,7 +403,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func pinFile(at url: URL) {
-        guard let data = try? Data(contentsOf: url) else { return }
+        guard Self.isImageFile(url), let data = try? Data(contentsOf: url) else { return }
         pin(data)
     }
 
@@ -425,6 +455,160 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } else {
             showError("No se encontró la aplicación Captura de pantalla de macOS.", title: "Error")
         }
+    }
+
+    // MARK: - Recording, scrolling capture and ruler
+
+    @objc private func showRuler() { ScreenOverlay.showRuler() }
+    @objc private func recordVideo() { startRecording(gif: false) }
+    @objc private func recordGIF() { startRecording(gif: true) }
+
+    @objc private func stopActiveCapture() {
+        if activeScroll != nil { stopScrollCapture() } else { stopRecording() }
+    }
+
+    private func startRecording(gif: Bool) {
+        guard activeRecorder == nil, activeScroll == nil else { return }
+        guard #available(macOS 12.3, *) else {
+            showError(RecordingError.unsupported.localizedDescription, title: "No se puede grabar")
+            return
+        }
+        let prompt = "Arrastra para elegir la zona a grabar\(gif ? " como GIF" : "") · Esc para cancelar"
+        ScreenOverlay.selectRegion(prompt: prompt) { [weak self] rect, screen in
+            guard let self = self, let rect = rect, let screen = screen else { return }
+            let movie = FileManager.default.temporaryDirectory.appendingPathComponent("MacCap-\(UUID().uuidString).mp4")
+            let recorder = RegionRecorder(outputURL: movie)
+            recorder.onUnexpectedStop = { [weak self] _ in self?.stopRecording() }
+            self.activeRecorder = recorder
+            self.recordingAsGIF = gif
+            self.captureControls = CaptureControls(region: rect, color: .systemRed, buttonTitle: "Detener") { [weak self] in
+                self?.stopRecording()
+            }
+            self.setIcon("record.circle.fill")
+            recorder.start(rect: rect, screen: screen, showsCursor: true) { [weak self] error in
+                guard let error = error else { return }
+                self?.endCaptureSession()
+                self?.showError(error.localizedDescription, title: "No se pudo grabar")
+            }
+        }
+    }
+
+    private func stopRecording() {
+        guard #available(macOS 12.3, *), let recorder = activeRecorder as? RegionRecorder else { return }
+        activeRecorder = nil
+        captureControls?.setStatus("Guardando…")
+        let gif = recordingAsGIF
+        recorder.stop { [weak self] result in
+            guard let self = self else { return }
+            switch result {
+            case .failure(let error):
+                self.endCaptureSession()
+                self.showError(error.localizedDescription, title: "No se pudo grabar")
+            case .success(let movie) where gif:
+                self.captureControls?.setStatus("Creando GIF…")
+                let output = movie.deletingPathExtension().appendingPathExtension("gif")
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let result = Result { try GIFExporter.convert(movie: movie, to: output) }
+                    try? FileManager.default.removeItem(at: movie)
+                    DispatchQueue.main.async {
+                        self.endCaptureSession()
+                        switch result {
+                        case .success: self.deliverRecording(output)
+                        case .failure(let error): self.showError(error.localizedDescription, title: "No se pudo crear el GIF")
+                        }
+                    }
+                }
+            case .success(let movie):
+                self.endCaptureSession()
+                self.deliverRecording(movie)
+            }
+        }
+    }
+
+    /// Moves a finished recording to the captures folder and shows its thumbnail.
+    private func deliverRecording(_ temporary: URL) {
+        let name = CaptureNaming.fileName(for: Date(), extension: temporary.pathExtension, prefix: "Grabación")
+        let destination = CaptureNaming.uniqueURL(in: Settings.saveFolder, name: name)
+        do {
+            try FileManager.default.moveItem(at: temporary, to: destination)
+        } catch {
+            showError(error.localizedDescription, title: "No se pudo guardar la grabación")
+            return
+        }
+        flash()
+        var preview: NSImage?
+        if destination.pathExtension == "gif" {
+            preview = NSImage(contentsOf: destination)
+        } else {
+            let generator = AVAssetImageGenerator(asset: AVURLAsset(url: destination))
+            generator.appliesPreferredTrackTransform = true
+            preview = (try? generator.copyCGImage(at: .zero, actualTime: nil)).map { NSImage(cgImage: $0, size: .zero) }
+        }
+        if Settings.showThumbnail, let preview = preview {
+            thumbnail.show(fileURL: destination, preview: preview)
+        } else {
+            NSWorkspace.shared.activateFileViewerSelecting([destination])
+        }
+    }
+
+    @objc private func startScrollCapture() {
+        guard activeRecorder == nil, activeScroll == nil else { return }
+        guard #available(macOS 12.3, *) else {
+            showError(RecordingError.unsupported.localizedDescription, title: "No se puede capturar")
+            return
+        }
+        let prompt = "Elige la zona que se desplaza (p. ej. el contenido de la página) · Esc para cancelar"
+        ScreenOverlay.selectRegion(prompt: prompt) { [weak self] rect, screen in
+            guard let self = self, let rect = rect, let screen = screen else { return }
+            let capture = ScrollCapture()
+            let scale = screen.backingScaleFactor
+            self.scrollScale = scale
+            self.activeScroll = capture
+            let controls = CaptureControls(region: rect, color: .systemBlue, buttonTitle: "Terminar") { [weak self] in
+                self?.stopScrollCapture()
+            }
+            controls.setStatus("Desplázate despacio hacia abajo")
+            self.captureControls = controls
+            capture.onProgress = { [weak controls] height, lost in
+                controls?.setStatus(lost ? "Más despacio…" : "\(Int(CGFloat(height) / scale)) pt")
+            }
+            capture.onUnexpectedStop = { [weak self] _ in self?.stopScrollCapture() }
+            self.setIcon("arrow.down.doc.fill")
+            capture.start(rect: rect, screen: screen) { [weak self] error in
+                guard let error = error else { return }
+                self?.endCaptureSession()
+                self?.showError(error.localizedDescription, title: "No se pudo capturar")
+            }
+        }
+    }
+
+    private func stopScrollCapture() {
+        guard #available(macOS 12.3, *), let capture = activeScroll as? ScrollCapture else { return }
+        let scale = scrollScale
+        activeScroll = nil
+        captureControls?.setStatus("Uniendo…")
+        capture.stop { [weak self] image in
+            guard let self = self else { return }
+            self.endCaptureSession()
+            guard let image = image else {
+                self.showError("No se capturó ninguna imagen.", title: "Captura con scroll")
+                return
+            }
+            let bitmap = NSBitmapImageRep(cgImage: image)
+            bitmap.size = NSSize(width: CGFloat(image.width) / scale, height: CGFloat(image.height) / scale)
+            guard let png = bitmap.representation(using: .png, properties: [:]),
+                  let document = AnnotationImage(data: png) else { return }
+            self.record(png)
+            self.openEditor(document)
+        }
+    }
+
+    private func endCaptureSession() {
+        captureControls?.close()
+        captureControls = nil
+        activeRecorder = nil
+        activeScroll = nil
+        setIcon("camera.viewfinder")
     }
 
     @objc private func openSaveFolder() { NSWorkspace.shared.open(Settings.saveFolder) }

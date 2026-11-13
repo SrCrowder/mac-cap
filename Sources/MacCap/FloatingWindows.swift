@@ -43,8 +43,8 @@ final class CaptureThumbnail: NSObject {
         self.actions = actions
     }
 
-    func show(fileURL: URL) {
-        guard let image = NSImage(contentsOf: fileURL), let screen = screenUnderMouse() else { return }
+    func show(fileURL: URL, preview: NSImage? = nil) {
+        guard let image = preview ?? NSImage(contentsOf: fileURL), let screen = screenUnderMouse() else { return }
         dismiss(animated: false)
         let maxSize = CGSize(width: 220, height: 150)
         let ratio = min(maxSize.width / max(image.size.width, 1), maxSize.height / max(image.size.height, 1), 1)
