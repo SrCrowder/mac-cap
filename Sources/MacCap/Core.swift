@@ -36,13 +36,44 @@ struct CaptureOptions: Equatable {
     }
 }
 
+// MARK: - Image formats
+
+enum ImageFormat: String, CaseIterable {
+    case png, jpeg, heic
+
+    var title: String {
+        switch self {
+        case .png: return "PNG (sin pérdida)"
+        case .jpeg: return "JPG (más ligero)"
+        case .heic: return "HEIC (el más ligero)"
+        }
+    }
+
+    var fileExtension: String {
+        switch self {
+        case .png: return "png"
+        case .jpeg: return "jpg"
+        case .heic: return "heic"
+        }
+    }
+
+    /// Uniform Type Identifier.
+    var typeIdentifier: String {
+        switch self {
+        case .png: return "public.png"
+        case .jpeg: return "public.jpeg"
+        case .heic: return "public.heic"
+        }
+    }
+}
+
 // MARK: - File names
 
 enum CaptureNaming {
-    static func fileName(for date: Date, calendar: Calendar = .current) -> String {
+    static func fileName(for date: Date, extension ext: String = "png", calendar: Calendar = .current) -> String {
         let c = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: date)
-        return String(format: "Captura %04d-%02d-%02d a las %02d.%02d.%02d.png",
-                      c.year ?? 0, c.month ?? 0, c.day ?? 0, c.hour ?? 0, c.minute ?? 0, c.second ?? 0)
+        return String(format: "Captura %04d-%02d-%02d a las %02d.%02d.%02d.%@",
+                      c.year ?? 0, c.month ?? 0, c.day ?? 0, c.hour ?? 0, c.minute ?? 0, c.second ?? 0, ext)
     }
 
     /// Returns `directory/name`, adding " (2)", " (3)"… before the extension if the file exists.

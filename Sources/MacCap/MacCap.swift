@@ -17,7 +17,7 @@ struct MacCap {
 }
 
 /// What to do with a capture once it is taken.
-enum Destination { case save, copy, annotate, text }
+enum Destination { case save, copy, annotate, text, qr, pin }
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
@@ -38,6 +38,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var loginItem: NSMenuItem!
     private var permissionItem: NSMenuItem!
     private var permissionSeparator: NSMenuItem!
+    private var formatItems: [NSMenuItem] = []
+    private var thumbnailItem: NSMenuItem!
+    private var historyItem: NSMenuItem!
+    private let recentsMenu = NSMenu()
+    private var thumbnailCache: [String: NSImage] = [:]
+    private var pinnedWindows: [PinnedImageWindow] = []
+    private lazy var thumbnail = CaptureThumbnail(actions: .init(
+        annotate: { [weak self] url in self?.annotateFile(at: url) },
+        pin: { [weak self] url in self?.pinFile(at: url) },
+        copy: { [weak self] url in self?.copyFile(at: url) }))
 
     private lazy var hotKeys: [HotKey] = [
         HotKey(id: 1, keyCode: kVK_ANSI_7, carbonModifiers: cmdKey | shiftKey, keyEquivalent: "7",
@@ -96,8 +106,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(header("Extras"))
         menu.addItem(item("Copiar texto de una zona (OCR)…", #selector(recognizeText), hotKey: hotKeys[2], symbol: "text.viewfinder"))
+        menu.addItem(item("Leer código QR de una zona…", #selector(readQRCode), symbol: "qrcode.viewfinder"))
+        menu.addItem(item("Fijar zona en pantalla…", #selector(pinSelection), symbol: "pin"))
+        menu.addItem(item("Cuentagotas (copiar color)…", #selector(pickColor), symbol: "eyedropper"))
         menu.addItem(item("Grabar pantalla / herramienta nativa…", #selector(openNativeToolbar), symbol: "record.circle"))
         menu.addItem(item("Abrir carpeta de capturas", #selector(openSaveFolder), symbol: "folder"))
+        let recents = NSMenuItem(title: "Recientes", action: nil, keyEquivalent: "")
+        recents.image = NSImage(systemSymbolName: "clock.arrow.circlepath", accessibilityDescription: nil)
+        recents.submenu = recentsMenu
+        menu.addItem(recents)
         menu.addItem(.separator())
 
         let options = NSMenuItem(title: "Opciones", action: nil, keyEquivalent: "")
@@ -137,10 +154,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         [cursorItem, shadowItem, soundItem].forEach { menu.addItem($0) }
         menu.addItem(.separator())
 
+        let formatMenu = NSMenu()
+        for format in ImageFormat.allCases {
+            let entry = item(format.title, #selector(setFormat(_:)))
+            entry.representedObject = format.rawValue
+            formatMenu.addItem(entry)
+            formatItems.append(entry)
+        }
+        let formatItem = NSMenuItem(title: "Formato al guardar", action: nil, keyEquivalent: "")
+        formatItem.submenu = formatMenu
+        menu.addItem(formatItem)
         folderItem = item("", #selector(chooseSaveFolder))
         askItem = item("Preguntar dónde guardar cada vez", #selector(toggleAsk))
         menu.addItem(folderItem)
         menu.addItem(askItem)
+        menu.addItem(.separator())
+        thumbnailItem = item("Mostrar miniatura tras capturar", #selector(toggleThumbnail))
+        historyItem = item("Guardar historial de recientes", #selector(toggleHistory))
+        menu.addItem(thumbnailItem)
+        menu.addItem(historyItem)
         menu.addItem(.separator())
 
         hotKeysItem = item("Atajos globales (⇧⌘7, ⇧⌘8, ⇧⌘9)", #selector(toggleHotKeys))
@@ -168,6 +200,65 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         hotKeysItem.state = Settings.hotKeys ? .on : .off
         loginItem.state = LoginItem.isEnabled ? .on : .off
         autoUpdateItem.state = updater.installsAutomatically ? .on : .off
+        let format = Settings.format
+        formatItems.forEach { $0.state = ($0.representedObject as? String) == format.rawValue ? .on : .off }
+        thumbnailItem.state = Settings.showThumbnail ? .on : .off
+        historyItem.state = Settings.keepHistory ? .on : .off
+        rebuildRecentsMenu()
+    }
+
+    private func rebuildRecentsMenu() {
+        recentsMenu.removeAllItems()
+        recentsMenu.autoenablesItems = false
+        let entries = CaptureHistory.entries()
+        if entries.isEmpty {
+            let empty = NSMenuItem(title: Settings.keepHistory ? "Sin capturas recientes" : "Historial desactivado",
+                                   action: nil, keyEquivalent: "")
+            empty.isEnabled = false
+            recentsMenu.addItem(empty)
+        }
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .short
+        formatter.doesRelativeDateFormatting = true
+        var alive = Set<String>()
+        for url in entries {
+            alive.insert(url.path)
+            let created = (try? url.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? Date()
+            let entry = NSMenuItem(title: formatter.string(from: created), action: nil, keyEquivalent: "")
+            entry.image = menuThumbnail(for: url)
+            let actions = NSMenu()
+            for (title, selector) in [("Copiar", #selector(copyRecent(_:))), ("Anotar…", #selector(annotateRecent(_:))),
+                                      ("Fijar en pantalla", #selector(pinRecent(_:))),
+                                      ("Guardar como…", #selector(saveRecent(_:))),
+                                      ("Mostrar en Finder", #selector(revealRecent(_:)))] {
+                let action = item(title, selector)
+                action.representedObject = url
+                actions.addItem(action)
+            }
+            entry.submenu = actions
+            recentsMenu.addItem(entry)
+        }
+        thumbnailCache = thumbnailCache.filter { alive.contains($0.key) }
+        recentsMenu.addItem(.separator())
+        recentsMenu.addItem(item("Abrir carpeta del historial", #selector(openHistoryFolder)))
+        let clear = item("Borrar historial", #selector(clearHistory))
+        clear.isEnabled = !entries.isEmpty
+        recentsMenu.addItem(clear)
+    }
+
+    private func menuThumbnail(for url: URL) -> NSImage? {
+        if let cached = thumbnailCache[url.path] { return cached }
+        guard let image = NSImage(contentsOf: url), image.size.width > 0, image.size.height > 0 else { return nil }
+        let box = CGSize(width: 48, height: 32)
+        let ratio = min(box.width / image.size.width, box.height / image.size.height)
+        let size = CGSize(width: max(1, image.size.width * ratio), height: max(1, image.size.height * ratio))
+        let thumbnail = NSImage(size: size, flipped: false) { rect in
+            image.draw(in: rect)
+            return true
+        }
+        thumbnailCache[url.path] = thumbnail
+        return thumbnail
     }
 
     private func item(_ title: String, _ action: Selector, hotKey: HotKey? = nil, symbol: String? = nil) -> NSMenuItem {
@@ -232,6 +323,78 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func annotateWindow() { capture(.window, to: .annotate) }
     @objc private func annotateScreen() { capture(.screen, to: .annotate) }
     @objc private func recognizeText() { capture(.selection, to: .text) }
+    @objc private func readQRCode() { capture(.selection, to: .qr) }
+    @objc private func pinSelection() { capture(.selection, to: .pin) }
+
+    @objc private func pickColor() {
+        NSColorSampler().show { [weak self] color in
+            guard let self = self, let rgb = color?.usingColorSpace(.sRGB) else { return }
+            let hex = String(format: "#%02X%02X%02X", Int((rgb.redComponent * 255).rounded()),
+                             Int((rgb.greenComponent * 255).rounded()), Int((rgb.blueComponent * 255).rounded()))
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(hex, forType: .string)
+            self.flash(text: hex)
+        }
+    }
+
+    // Recent captures (sender.representedObject is the file URL).
+    @objc private func copyRecent(_ sender: NSMenuItem) { (sender.representedObject as? URL).map(copyFile(at:)) }
+    @objc private func annotateRecent(_ sender: NSMenuItem) { (sender.representedObject as? URL).map(annotateFile(at:)) }
+    @objc private func pinRecent(_ sender: NSMenuItem) { (sender.representedObject as? URL).map(pinFile(at:)) }
+    @objc private func revealRecent(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+    @objc private func saveRecent(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL, let data = try? Data(contentsOf: url) else { return }
+        save(data, alwaysAsk: true)
+    }
+    @objc private func openHistoryFolder() {
+        try? FileManager.default.createDirectory(at: CaptureHistory.directory, withIntermediateDirectories: true)
+        NSWorkspace.shared.open(CaptureHistory.directory)
+    }
+    @objc private func clearHistory() {
+        CaptureHistory.clear()
+        thumbnailCache.removeAll()
+    }
+
+    private func copyFile(at url: URL) {
+        guard let data = try? Data(contentsOf: url) else { return }
+        copy(data)
+        flash()
+    }
+
+    private func annotateFile(at url: URL) {
+        guard let data = try? Data(contentsOf: url), let document = AnnotationImage(data: data) else {
+            showError("No se pudo abrir la imagen.", title: "Error")
+            return
+        }
+        openEditor(document)
+    }
+
+    private func pinFile(at url: URL) {
+        guard let data = try? Data(contentsOf: url) else { return }
+        pin(data)
+    }
+
+    private func pin(_ data: Data) {
+        guard let image = NSImage(data: data), let bitmap = NSBitmapImageRep(data: data) else { return }
+        let window = PinnedImageWindow(image: image, pointSize: bitmap.size)
+        window.onClose = { [weak self, weak window] in self?.pinnedWindows.removeAll { $0 === window } }
+        window.onCopy = { [weak self] image in
+            guard let tiff = image.tiffRepresentation, let png = NSBitmapImageRep(data: tiff)?
+                    .representation(using: .png, properties: [:]) else { return }
+            self?.copy(png)
+            self?.flash()
+        }
+        window.onAnnotate = { [weak self] image in
+            guard let document = AnnotationImage(image: image) else { return }
+            self?.openEditor(document)
+        }
+        pinnedWindows.append(window)
+        window.orderFrontRegardless()
+        window.makeKey()
+    }
 
     @objc private func annotateClipboard() {
         guard let image = NSImage(pasteboard: .general), let document = AnnotationImage(image: image) else {
@@ -329,6 +492,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func toggleShadow() { Settings.windowShadow.toggle() }
     @objc private func toggleSound() { Settings.sound.toggle() }
     @objc private func toggleAsk() { Settings.askWhereToSave.toggle() }
+    @objc private func toggleThumbnail() { Settings.showThumbnail.toggle() }
+    @objc private func toggleHistory() { Settings.keepHistory.toggle() }
+    @objc private func setFormat(_ sender: NSMenuItem) {
+        if let raw = sender.representedObject as? String, let format = ImageFormat(rawValue: raw) { Settings.format = format }
+    }
 
     @objc private func toggleHotKeys() {
         Settings.hotKeys.toggle()
@@ -374,11 +542,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                      windowShadow: Settings.windowShadow, sound: Settings.sound)
         DispatchQueue.global(qos: .userInitiated).async {
             let result = Self.runScreencapture(options)
-            var recognized: Result<String, Error>?
-            if destination == .text, case .success(let data?) = result {
+            var recognized: Result<[String], Error>?
+            if destination == .text || destination == .qr, case .success(let data?) = result {
                 recognized = Result {
                     guard let cgImage = NSBitmapImageRep(data: data)?.cgImage else { throw CaptureError.invalidImage }
-                    return try TextRecognizer.recognize(cgImage)
+                    if destination == .qr { return try BarcodeReader.read(cgImage) }
+                    let text = try TextRecognizer.recognize(cgImage)
+                    return text.isEmpty ? [] : [text]
                 }
             }
             DispatchQueue.main.async {
@@ -395,14 +565,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    private func deliver(_ data: Data, to destination: Destination, recognized: Result<String, Error>?) {
+    private func deliver(_ data: Data, to destination: Destination, recognized: Result<[String], Error>?) {
         switch destination {
         case .save:
-            if save(data) { flash() }
+            let fileURL = record(data)
+            if save(data) {
+                flash()
+                showThumbnail(fileURL)
+            }
         case .copy:
+            let fileURL = record(data)
             copy(data)
             flash()
+            showThumbnail(fileURL)
+        case .pin:
+            record(data)
+            pin(data)
+        case .qr:
+            switch recognized {
+            case .success(let codes)? where !codes.isEmpty:
+                let text = codes.joined(separator: "\n")
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(text, forType: .string)
+                if codes.count == 1, let url = URL(string: codes[0]), ["http", "https"].contains(url.scheme?.lowercased() ?? "") {
+                    NSApp.activate(ignoringOtherApps: true)
+                    let alert = NSAlert()
+                    alert.messageText = "Enlace copiado"
+                    alert.informativeText = codes[0]
+                    alert.addButton(withTitle: "Abrir enlace")
+                    alert.addButton(withTitle: "Cerrar")
+                    if alert.runModal() == .alertFirstButtonReturn { NSWorkspace.shared.open(url) }
+                } else {
+                    flash()
+                }
+            case .failure(let error)?:
+                showError(error.localizedDescription, title: "No se pudo leer el código")
+            default:
+                showError("No se ha encontrado ningún código QR o de barras en la zona seleccionada.", title: "Sin códigos")
+            }
         case .annotate:
+            record(data)
             guard let document = AnnotationImage(data: data) else {
                 showError(CaptureError.invalidImage.localizedDescription)
                 return
@@ -410,9 +612,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             openEditor(document)
         case .text:
             switch recognized {
-            case .success(let text)? where !text.isEmpty:
+            case .success(let texts)? where !texts.isEmpty:
                 NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(text, forType: .string)
+                NSPasteboard.general.setString(texts.joined(separator: "\n"), forType: .string)
                 flash()
             case .failure(let error)?:
                 showError(error.localizedDescription, title: "No se pudo reconocer el texto")
@@ -471,8 +673,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func openEditor(_ document: AnnotationImage) {
         let editor = AnnotationWindowController(document: document, save: { [weak self] data in
-            self?.save(data, alwaysAsk: true) ?? false
+            guard let self = self, self.save(data, alwaysAsk: true) else { return false }
+            self.record(data)
+            return true
         }, copy: { [weak self] data in
+            self?.record(data)
             self?.copy(data)
             self?.flash()
         })
@@ -485,16 +690,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         editor.window?.makeKeyAndOrderFront(nil)
     }
 
+    /// Adds a capture to the history (or a temporary file when the history is off) and returns its URL,
+    /// used by the floating thumbnail.
     @discardableResult
-    private func save(_ data: Data, alwaysAsk: Bool = false) -> Bool {
-        let name = CaptureNaming.fileName(for: Date())
+    private func record(_ png: Data) -> URL? {
+        if Settings.keepHistory { return CaptureHistory.add(png) }
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("MacCap", isDirectory: true)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = CaptureNaming.uniqueURL(in: directory, name: CaptureNaming.fileName(for: Date()))
+        return (try? png.write(to: url, options: .atomic)).map { url }
+    }
+
+    private func showThumbnail(_ url: URL?) {
+        guard Settings.showThumbnail, let url = url else { return }
+        thumbnail.show(fileURL: url)
+    }
+
+    /// Saves PNG data in the chosen format.
+    @discardableResult
+    private func save(_ png: Data, alwaysAsk: Bool = false) -> Bool {
+        let format = Settings.format
+        guard let data = ImageExporter.data(fromPNG: png, format: format) else {
+            showError("No se pudo convertir la imagen a \(format.fileExtension.uppercased()).",
+                      title: "No se pudo guardar la captura")
+            return false
+        }
+        let name = CaptureNaming.fileName(for: Date(), extension: format.fileExtension)
         let url: URL
         if alwaysAsk || Settings.askWhereToSave {
             NSApp.activate(ignoringOtherApps: true)
             let panel = NSSavePanel()
             panel.nameFieldStringValue = name
             panel.directoryURL = Settings.saveFolder
-            panel.allowedContentTypes = [.png]
+            panel.allowedContentTypes = [UTType(format.typeIdentifier) ?? .png]
             panel.canCreateDirectories = true
             guard panel.runModal() == .OK, let chosen = panel.url else { return false }
             url = chosen
@@ -528,13 +756,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem.button?.image = image
     }
 
-    /// Briefly shows a check mark in the menu bar to confirm a copy or save.
-    private func flash() {
+    /// Briefly shows a check mark (and optional text) in the menu bar to confirm an action.
+    private func flash(text: String? = nil) {
         restoreIconWork?.cancel()
         setIcon("checkmark.circle.fill")
-        let work = DispatchWorkItem { [weak self] in self?.setIcon("camera.viewfinder") }
+        statusItem.button?.imagePosition = .imageLeft
+        statusItem.button?.title = text.map { " \($0)" } ?? ""
+        let work = DispatchWorkItem { [weak self] in
+            self?.setIcon("camera.viewfinder")
+            self?.statusItem.button?.title = ""
+        }
         restoreIconWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + (text == nil ? 1.2 : 3), execute: work)
     }
 
     private func showError(_ message: String, title: String = "No se pudo realizar la captura") {

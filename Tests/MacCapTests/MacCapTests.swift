@@ -28,6 +28,14 @@ final class NamingTests: XCTestCase {
                        "Captura 2023-11-14 a las 22.13.20.png")
     }
 
+    func testFileNameExtension() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        XCTAssertEqual(CaptureNaming.fileName(for: date, extension: ImageFormat.jpeg.fileExtension, calendar: calendar),
+                       "Captura 2023-11-14 a las 22.13.20.jpg")
+    }
+
     func testUniqueURL() {
         let directory = URL(fileURLWithPath: "/tmp/x", isDirectory: true)
         let taken: Set<String> = ["/tmp/x/a.png", "/tmp/x/a (2).png"]
@@ -213,6 +221,32 @@ final class RenderingTests: XCTestCase {
             let row = Set((100..<130).map { Int(rep.colorAt(x: $0, y: 150)!.redComponent * 255) })
             if noise { XCTAssertGreaterThan(row.count, 3, "noise has no effect") } else { XCTAssertLessThanOrEqual(row.count, 2) }
         }
+    }
+
+    func testExportFormats() throws {
+        let document = try makeDocument()
+        let png = try XCTUnwrap(document.pngData(with: []))
+        XCTAssertEqual(ImageExporter.data(fromPNG: png, format: .png), png)
+        let jpeg = try XCTUnwrap(ImageExporter.data(fromPNG: png, format: .jpeg))
+        XCTAssertEqual(Array(jpeg.prefix(2)), [0xFF, 0xD8])
+        let decoded = try XCTUnwrap(NSBitmapImageRep(data: jpeg))
+        XCTAssertEqual(decoded.pixelsWide, 400)
+        XCTAssertEqual(decoded.size.width, 200, accuracy: 0.5, "DPI kept")
+        // HEIC encoding may be unavailable on CI virtual machines; if it works it must decode.
+        if let heic = ImageExporter.data(fromPNG: png, format: .heic) {
+            XCTAssertEqual(NSBitmapImageRep(data: heic)?.pixelsWide, 400)
+        }
+    }
+
+    func testBarcodeReaderFindsQRCode() throws {
+        let filter = try XCTUnwrap(CIFilter(name: "CIQRCodeGenerator"))
+        filter.setValue(Data("https://example.com/maccap".utf8), forKey: "inputMessage")
+        let qr = try XCTUnwrap(filter.outputImage).transformed(by: CGAffineTransform(scaleX: 10, y: 10))
+        let padded = qr.transformed(by: CGAffineTransform(translationX: 40, y: 40))
+            .composited(over: CIImage(color: .white).cropped(to: CGRect(x: 0, y: 0, width: qr.extent.width + 80,
+                                                                        height: qr.extent.height + 80)))
+        let cgImage = try XCTUnwrap(CIContext().createCGImage(padded, from: padded.extent))
+        XCTAssertEqual(try BarcodeReader.read(cgImage), ["https://example.com/maccap"])
     }
 }
 #endif

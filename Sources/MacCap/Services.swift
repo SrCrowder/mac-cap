@@ -2,6 +2,7 @@
 import AppKit
 import Carbon.HIToolbox
 import ServiceManagement
+import ImageIO
 import Vision
 
 // MARK: - Settings
@@ -28,6 +29,18 @@ enum Settings {
     static var askWhereToSave: Bool {
         get { defaults.bool(forKey: "askWhereToSave") }
         set { defaults.set(newValue, forKey: "askWhereToSave") }
+    }
+    static var format: ImageFormat {
+        get { ImageFormat(rawValue: defaults.string(forKey: "format") ?? "") ?? .png }
+        set { defaults.set(newValue.rawValue, forKey: "format") }
+    }
+    static var showThumbnail: Bool {
+        get { defaults.object(forKey: "showThumbnail") as? Bool ?? true }
+        set { defaults.set(newValue, forKey: "showThumbnail") }
+    }
+    static var keepHistory: Bool {
+        get { defaults.object(forKey: "keepHistory") as? Bool ?? true }
+        set { defaults.set(newValue, forKey: "keepHistory") }
     }
     static var suppressPermissionAlert: Bool {
         get { defaults.bool(forKey: "suppressPermissionAlert") }
@@ -84,6 +97,96 @@ enum TextRecognizer {
         try VNImageRequestHandler(cgImage: image, options: [:]).perform([request])
         let observations = request.results ?? []
         return observations.compactMap { $0.topCandidates(1).first?.string }.joined(separator: "\n")
+    }
+}
+
+// MARK: - Image export
+
+enum ImageExporter {
+    /// Converts PNG data to `format`, keeping the DPI (so Retina captures keep their size).
+    /// JPEG has no transparency, so it is flattened onto white first.
+    static func data(fromPNG png: Data, format: ImageFormat) -> Data? {
+        if format == .png { return png }
+        guard let source = CGImageSourceCreateWithData(png as CFData, nil),
+              var image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
+        let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] ?? [:]
+        if format == .jpeg, let flattened = flatten(image) { image = flattened }
+        let output = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(output, format.typeIdentifier as CFString, 1, nil)
+        else { return nil }
+        var options: [CFString: Any] = [kCGImageDestinationLossyCompressionQuality: 0.9]
+        if let dpi = properties[kCGImagePropertyDPIWidth] {
+            options[kCGImagePropertyDPIWidth] = dpi
+            options[kCGImagePropertyDPIHeight] = properties[kCGImagePropertyDPIHeight] ?? dpi
+        }
+        CGImageDestinationAddImage(destination, image, options as CFDictionary)
+        guard CGImageDestinationFinalize(destination) else { return nil }
+        return output as Data
+    }
+
+    private static func flatten(_ image: CGImage) -> CGImage? {
+        guard let context = CGContext(data: nil, width: image.width, height: image.height, bitsPerComponent: 8,
+                                      bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                      bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { return nil }
+        let rect = CGRect(x: 0, y: 0, width: image.width, height: image.height)
+        context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+        context.fill(rect)
+        context.draw(image, in: rect)
+        return context.makeImage()
+    }
+}
+
+// MARK: - QR and barcodes
+
+enum BarcodeReader {
+    /// Payloads of every QR/barcode found. Call from a background queue.
+    static func read(_ image: CGImage) throws -> [String] {
+        let request = VNDetectBarcodesRequest()
+        try VNImageRequestHandler(cgImage: image, options: [:]).perform([request])
+        var seen = Set<String>()
+        return (request.results ?? []).compactMap { $0.payloadStringValue }.filter { seen.insert($0).inserted }
+    }
+}
+
+// MARK: - History
+
+/// Keeps the latest captures in ~/Library/Application Support/MacCap/History.
+enum CaptureHistory {
+    static let limit = 20
+
+    static var directory: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        return base.appendingPathComponent("MacCap/History", isDirectory: true)
+    }
+
+    @discardableResult
+    static func add(_ png: Data) -> URL? {
+        let fileManager = FileManager.default
+        do {
+            try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+            let url = CaptureNaming.uniqueURL(in: directory, name: CaptureNaming.fileName(for: Date()))
+            try png.write(to: url, options: .atomic)
+            for old in entries().dropFirst(limit) { try? fileManager.removeItem(at: old) }
+            return url
+        } catch {
+            NSLog("MacCap: no se pudo guardar en el historial: %@", error.localizedDescription)
+            return nil
+        }
+    }
+
+    /// Newest first.
+    static func entries() -> [URL] {
+        let urls = (try? FileManager.default.contentsOfDirectory(
+            at: directory, includingPropertiesForKeys: [.creationDateKey], options: [.skipsHiddenFiles])) ?? []
+        func date(_ url: URL) -> Date {
+            (try? url.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
+        }
+        return urls.filter { $0.pathExtension.lowercased() == "png" }.sorted { date($0) > date($1) }
+    }
+
+    static func clear() {
+        for url in entries() { try? FileManager.default.removeItem(at: url) }
     }
 }
 
