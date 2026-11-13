@@ -17,6 +17,8 @@ concurrency:
 env:
   # Keep in sync with Package.swift.
   SPARKLE_VERSION: 2.10.1
+  # SHA-256 of Sparkle-$SPARKLE_VERSION.tar.xz (matches the digest GitHub shows for the release asset).
+  SPARKLE_SHA256: 1a856d2a9edb8e628de88121d7be04cf0e2167f8641650b78fca00b14244cf27
 
 jobs:
   build:
@@ -58,6 +60,8 @@ jobs:
         run: |
           ./build-app.sh
           codesign -d -r- build/MacCap.app 2>&1 | grep designated
+          codesign -dv build/MacCap.app 2>&1 | grep -E "flags=.*runtime"
+          codesign -d --entitlements - build/MacCap.app
 
       - name: Package .zip and .dmg
         run: |
@@ -80,6 +84,7 @@ jobs:
         run: |
           curl -fsSL -o "$RUNNER_TEMP/sparkle.tar.xz" \
             "https://github.com/sparkle-project/Sparkle/releases/download/$SPARKLE_VERSION/Sparkle-$SPARKLE_VERSION.tar.xz"
+          echo "$SPARKLE_SHA256  $RUNNER_TEMP/sparkle.tar.xz" | shasum -a 256 -c -
           mkdir -p "$RUNNER_TEMP/sparkle"
           tar -xf "$RUNNER_TEMP/sparkle.tar.xz" -C "$RUNNER_TEMP/sparkle"
           signature="$(echo "$SPARKLE_ED_PRIVATE_KEY" | "$RUNNER_TEMP/sparkle/bin/sign_update" --ed-key-file - build/MacCap.zip)"

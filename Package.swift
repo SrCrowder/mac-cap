@@ -6,7 +6,7 @@ let package = Package(
     platforms: [.macOS(.v12)],
     products: [.executable(name: "MacCap", targets: ["MacCap"])],
     dependencies: [
-        // Automatic updates. Keep in sync with SPARKLE_VERSION in .github/workflows/build.yml.
+        // Automatic updates. Keep in sync with SPARKLE_VERSION and SPARKLE_SHA256 in .github/workflows/build.yml.
         .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.1")
     ],
     targets: [

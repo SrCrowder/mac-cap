@@ -48,15 +48,16 @@ if [[ -n "${MACCAP_VERSION:-}" ]]; then
     /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${MACCAP_VERSION##*.}" "$app/Contents/Info.plist"
 fi
 
-# Sign inside-out. Without hardened runtime: a self-signed certificate has no Team ID,
-# so library validation would refuse to load Sparkle.
+# Sign inside-out with the hardened runtime (blocks DYLD_* code injection, which would otherwise
+# let other programs borrow MacCap's screen recording permission).
 identity="${MACCAP_SIGN_IDENTITY:--}"
 framework="$app/Contents/Frameworks/Sparkle.framework/Versions/B"
-for item in "$framework/XPCServices/Installer.xpc" "$framework/XPCServices/Downloader.xpc" \
-            "$framework/Autoupdate" "$framework/Updater.app"; do
-    if [[ -e "$item" ]]; then codesign --force --sign "$identity" "$item"; fi
-done
-codesign --force --sign "$identity" "$app/Contents/Frameworks/Sparkle.framework"
-codesign --force --sign "$identity" "$app"
+sign() { codesign --force --options runtime --timestamp=none --sign "$identity" "$@"; }
+sign "$framework/XPCServices/Installer.xpc"
+sign --preserve-metadata=entitlements "$framework/XPCServices/Downloader.xpc"
+sign "$framework/Autoupdate"
+sign "$framework/Updater.app"
+sign "$app/Contents/Frameworks/Sparkle.framework"
+sign --entitlements "$root/Resources/MacCap.entitlements" "$app"
 codesign --verify --deep --strict "$app"
 echo "Aplicación creada en $app"
