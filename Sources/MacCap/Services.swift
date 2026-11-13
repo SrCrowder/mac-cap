@@ -29,6 +29,10 @@ enum Settings {
         get { defaults.bool(forKey: "askWhereToSave") }
         set { defaults.set(newValue, forKey: "askWhereToSave") }
     }
+    static var suppressPermissionAlert: Bool {
+        get { defaults.bool(forKey: "suppressPermissionAlert") }
+        set { defaults.set(newValue, forKey: "suppressPermissionAlert") }
+    }
     static var hotKeys: Bool {
         get { defaults.object(forKey: "hotKeys") as? Bool ?? true }
         set { defaults.set(newValue, forKey: "hotKeys") }

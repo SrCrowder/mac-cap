@@ -55,8 +55,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem.button?.toolTip = "MacCap – capturas de pantalla"
         statusItem.menu = buildMenu()
         applyHotKeys()
-        if !CGPreflightScreenCaptureAccess() {
-            CGRequestScreenCaptureAccess()
+        if CGPreflightScreenCaptureAccess() {
+            Settings.suppressPermissionAlert = false
+        } else if !Settings.suppressPermissionAlert {
+            DispatchQueue.main.async { self.showPermissionHelp(atLaunch: true) }
         }
     }
 
@@ -262,8 +264,59 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func openSaveFolder() { NSWorkspace.shared.open(Settings.saveFolder) }
 
-    @objc private func openPermissionSettings() {
-        CGRequestScreenCaptureAccess()
+    @objc private func openPermissionSettings() { showPermissionHelp(atLaunch: false) }
+
+    /// Explains the permission and offers to reset it. Resetting fixes the common case where the
+    /// entry in System Settings belongs to an older build with a different signature: it looks
+    /// enabled, but macOS doesn't apply it to the current app.
+    private func showPermissionHelp(atLaunch: Bool) {
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = "MacCap necesita permiso de grabación de pantalla"
+        alert.informativeText = """
+        1. Pulsa «Restablecer y abrir Ajustes».
+        2. Activa MacCap en la lista y, cuando macOS lo ofrezca, elige «Salir y volver a abrir».
+
+        Si MacCap ya aparecía activada, ese permiso es de una versión anterior con otra firma y macOS no lo aplica. \
+        Al restablecer se borra para que puedas concederlo de nuevo.
+        """
+        alert.addButton(withTitle: "Restablecer y abrir Ajustes")
+        alert.addButton(withTitle: "Solo abrir Ajustes")
+        alert.addButton(withTitle: "Ahora no")
+        if atLaunch {
+            alert.showsSuppressionButton = true
+            alert.suppressionButton?.title = "No avisar al abrir MacCap"
+        }
+        let response = alert.runModal()
+        if alert.suppressionButton?.state == .on { Settings.suppressPermissionAlert = true }
+        switch response {
+        case .alertFirstButtonReturn:
+            resetScreenCapturePermission()
+            CGRequestScreenCaptureAccess()
+            openScreenRecordingSettings()
+        case .alertSecondButtonReturn:
+            CGRequestScreenCaptureAccess()
+            openScreenRecordingSettings()
+        default:
+            break
+        }
+    }
+
+    private func resetScreenCapturePermission() {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+        process.arguments = ["reset", "ScreenCapture", Bundle.main.bundleIdentifier ?? "com.srCrowder.mac-cap"]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            NSLog("MacCap: tccutil falló: %@", error.localizedDescription)
+        }
+    }
+
+    private func openScreenRecordingSettings() {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
             NSWorkspace.shared.open(url)
         }
