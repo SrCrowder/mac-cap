@@ -193,7 +193,6 @@ final class RenderingTests: XCTestCase {
         XCTAssertGreaterThan(edge.redComponent, 0.8)
         XCTAssertLessThan(edge.greenComponent, 0.3)
     }
-}
 
     func testPixelatePipelineAveragesBlocks() throws {
         let document = try makeDocument()
