@@ -45,7 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var thumbnailCache: [String: NSImage] = [:]
     private var pinnedWindows: [PinnedImageWindow] = []
     private lazy var thumbnail = CaptureThumbnail(actions: .init(
-        annotate: { [weak self] url in self?.annotateFile(at: url) },
+        annotate: { [weak self] url in self?.annotateImage(at: url) },
         pin: { [weak self] url in self?.pinFile(at: url) },
         copy: { [weak self] url in self?.copyFile(at: url) }))
 
@@ -339,7 +339,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // Recent captures (sender.representedObject is the file URL).
     @objc private func copyRecent(_ sender: NSMenuItem) { (sender.representedObject as? URL).map(copyFile(at:)) }
-    @objc private func annotateRecent(_ sender: NSMenuItem) { (sender.representedObject as? URL).map(annotateFile(at:)) }
+    @objc private func annotateRecent(_ sender: NSMenuItem) { (sender.representedObject as? URL).map(annotateImage(at:)) }
     @objc private func pinRecent(_ sender: NSMenuItem) { (sender.representedObject as? URL).map(pinFile(at:)) }
     @objc private func revealRecent(_ sender: NSMenuItem) {
         guard let url = sender.representedObject as? URL else { return }
