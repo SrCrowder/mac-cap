@@ -44,9 +44,13 @@ final class AnnotationImage {
     private func makeBlurred() -> NSImage? {
         guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
         let input = CIImage(cgImage: cgImage)
-        let radius = AnnotationGeometry.pixelateBlock(for: pixelSize, scale: scale) / 2
-        let output = input.clampedToExtent()
-            .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: radius])
+        // A plain Gaussian blur can be partly reversed. Pixelate first (each block becomes an average,
+        // with noise and a random grid, so the original pixels are gone), then soften the blocks.
+        let block = AnnotationGeometry.pixelateBlock(for: pixelSize, scale: scale)
+        let offset = CGPoint(x: CGFloat.random(in: 0..<block), y: CGFloat.random(in: 0..<block))
+        let output = Self.pixelate(input, block: block, offset: offset, noise: true)
+            .clampedToExtent()
+            .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: block * 0.6])
             .cropped(to: input.extent)
         guard let result = CIContext().createCGImage(output, from: input.extent) else { return nil }
         return NSImage(cgImage: result, size: pixelSize)

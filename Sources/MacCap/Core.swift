@@ -100,7 +100,7 @@ enum AnnotationTool: String, CaseIterable {
     var title: String {
         switch self {
         case .select: return "Seleccionar y mover"
-        case .blur: return "Difuminar"
+        case .blur: return "Difuminar (oculta como el pixelado)"
         case .crop: return "Recortar"
 
         case .rectangle: return "Rectángulo"
