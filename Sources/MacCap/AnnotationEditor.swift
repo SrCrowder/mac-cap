@@ -45,6 +45,7 @@ final class AnnotationImage {
         if let noise = CIFilter(name: "CIRandomGenerator")?.outputImage?
             .transformed(by: CGAffineTransform(translationX: CGFloat.random(in: 0..<1000), y: 0))
             .cropped(to: input.extent)
+            .settingAlphaOne(in: input.extent)
             .applyingFilter("CIColorMatrix", parameters: [
                 "inputRVector": CIVector(x: 0.12, y: 0, z: 0, w: 0),
                 "inputGVector": CIVector(x: 0, y: 0.12, z: 0, w: 0),
