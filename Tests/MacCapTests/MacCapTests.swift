@@ -194,3 +194,30 @@ final class RenderingTests: XCTestCase {
     }
 }
 #endif
+
+#if os(macOS)
+final class DiagnosticTests: XCTestCase {
+    func testDiagnosePixelated() throws {
+        let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 400, pixelsHigh: 300, bitsPerSample: 8,
+                                      samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+                                      bytesPerRow: 0, bitsPerPixel: 0)!
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
+        NSColor.white.setFill(); CGRect(x: 0, y: 0, width: 400, height: 300).fill()
+        NSColor.black.setFill()
+        for x in stride(from: 0, to: 400, by: 4) { CGRect(x: x, y: 0, width: 2, height: 300).fill() }
+        NSGraphicsContext.restoreGraphicsState()
+        bitmap.size = NSSize(width: 200, height: 150)
+        let doc = AnnotationImage(data: bitmap.representation(using: .png, properties: [:])!)!
+        let pix = try XCTUnwrap(doc.pixelated)
+        let cg = try XCTUnwrap(pix.cgImage(forProposedRect: nil, context: nil, hints: nil))
+        let rep = NSBitmapImageRep(cgImage: cg)
+        print("DIAG pixelated size", rep.pixelsWide, rep.pixelsHigh, "alpha", rep.hasAlpha, cg.alphaInfo.rawValue)
+        for (x, y) in [(10, 10), (260, 160), (300, 200)] { print("DIAG pix", x, y, rep.colorAt(x: x, y: y)!) }
+        let orig = NSBitmapImageRep(cgImage: doc.image.cgImage(forProposedRect: nil, context: nil, hints: nil)!)
+        for (x, y) in [(260, 160), (262, 160)] { print("DIAG orig", x, y, orig.colorAt(x: x, y: y)!) }
+        let out = NSBitmapImageRep(data: doc.pngData(with: [Annotation(tool: .pixelate, points: [CGPoint(x: 200, y: 100), CGPoint(x: 400, y: 300)], color: RGBA(r: 1, g: 0, b: 0), lineWidth: 4)])!)!
+        for (x, y) in [(100, 50), (102, 50), (260, 160), (300, 200)] { print("DIAG out", x, y, out.colorAt(x: x, y: y)!) }
+    }
+}
+#endif
