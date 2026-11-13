@@ -104,6 +104,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         options.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: nil)
         options.submenu = buildOptionsMenu()
         menu.addItem(options)
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+        menu.addItem(header("MacCap \(version)"))
         let check = NSMenuItem(title: "Buscar actualizaciones…", action: #selector(Updater.checkForUpdates(_:)), keyEquivalent: "")
         check.target = updater
         check.image = NSImage(systemSymbolName: "arrow.down.circle", accessibilityDescription: nil)
