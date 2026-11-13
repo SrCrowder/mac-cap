@@ -6,6 +6,10 @@
     <string>es</string>
     <key>CFBundleExecutable</key>
     <string>MacCap</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>CFBundleDisplayName</key>
+    <string>MacCap</string>
     <key>CFBundleIdentifier</key>
     <string>com.srCrowder.mac-cap</string>
     <key>CFBundleInfoDictionaryVersion</key>
@@ -22,6 +26,8 @@
     <string>12.0</string>
     <key>LSUIElement</key>
     <true/>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.utilities</string>
     <key>NSHighResolutionCapable</key>
     <true/>
 </dict>

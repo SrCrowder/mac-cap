@@ -1,28 +1,73 @@
 # MacCap
 
-Capturas de pantalla desde la barra de menús de macOS, sin recordar combinaciones de teclas.
+Capturas de pantalla desde la barra de menús de macOS, sin tener que recordar combinaciones de teclas.
+Un icono en la barra de menús (arriba a la derecha) reúne todas las opciones y añade lo que macOS no trae de serie:
+un editor para dibujar rectángulos, flechas, texto, números, pixelar, resaltar… y copiar texto de cualquier zona (OCR).
 
-## Instalación
+## Descarga
 
-Se necesita macOS 12 o posterior y Xcode o las herramientas de línea de comandos de Xcode (`xcode-select --install`).
+Cada push a `main` compila la app con GitHub Actions y la publica en la release **latest**:
+
+- [**MacCap.dmg**](https://github.com/SrCrowder/mac-cap/releases/download/latest/MacCap.dmg) (o `MacCap.zip`) en la página de [Releases](https://github.com/SrCrowder/mac-cap/releases).
+- También como *artifact* en cada ejecución de [Actions](https://github.com/SrCrowder/mac-cap/actions).
+- Al subir una etiqueta `v*` (p. ej. `git tag v1.0 && git push --tags`) se crea una release con versión.
+
+La app es universal (Apple Silicon e Intel) y necesita macOS 12 o posterior.
+
+### Primer arranque
+
+La app no está firmada con un certificado de Apple Developer, así que la primera vez macOS la bloquea:
+
+1. Abre el `.dmg` y arrastra **MacCap** a **Aplicaciones**.
+2. Abre MacCap. Si macOS dice que no se puede verificar, ve a **Ajustes del Sistema → Privacidad y seguridad**
+   y pulsa **Abrir igualmente** (o, desde Terminal: `xattr -dr com.apple.quarantine /Applications/MacCap.app`).
+3. Concede **Grabación de pantalla** a MacCap cuando lo pida (**Privacidad y seguridad → Grabación de pantalla**)
+   y vuelve a abrir la app. Si falta el permiso, el menú muestra un aviso para abrir esos ajustes.
+
+Cada compilación nueva tiene una firma distinta, así que tras actualizar puede que tengas que volver a dar el permiso
+(quita MacCap de la lista y añádela de nuevo si no funciona).
+
+## Qué hace
+
+Haz clic en el icono de la barra de menús:
+
+| Sección | Opciones |
+| --- | --- |
+| **Copiar al portapapeles** | Zona · Ventana · Pantalla completa |
+| **Guardar en archivo** | Zona · Ventana · Pantalla completa (PNG en el Escritorio o la carpeta que elijas) |
+| **Anotar** | Zona, ventana o pantalla completa y abrir el editor · Anotar la imagen del portapapeles o de un archivo |
+| **Extras** | Copiar texto de una zona (OCR) · Grabar pantalla (abre la herramienta nativa de macOS) · Abrir carpeta de capturas |
+| **Opciones** | Retardo 3/5/10 s · Incluir cursor · Sombra en ventanas · Sonido · Carpeta de destino · Preguntar dónde guardar · Atajos globales · Abrir al iniciar sesión |
+
+En zona: arrastra para seleccionar, **espacio** cambia a modo ventana y **Esc** cancela.
+Al copiar o guardar, el icono muestra un ✓ un momento.
+
+### Atajos globales (se pueden desactivar en Opciones)
+
+| Atajo | Acción |
+| --- | --- |
+| ⇧⌘7 | Capturar zona y anotar |
+| ⇧⌘8 | Capturar zona y copiar |
+| ⇧⌘9 | Copiar texto de una zona (OCR) |
+
+### Editor de anotaciones
+
+Herramientas (con su tecla): **R** rectángulo · **O** elipse · **A** flecha · **L** línea · **P** lápiz ·
+**H** resaltador · **T** texto · **N** números (1, 2, 3…) · **B** pixelar/difuminar.
+
+- 8 colores y 3 grosores. **Mayús** al arrastrar hace cuadrados/círculos y líneas a 45°.
+- **⌘Z / ⇧⌘Z** deshacer y rehacer, **Supr** deshace la última, papelera para borrar todo.
+- **⌘C** copia, **⌘S** guarda, **⌘↩** copia y cierra. Si cierras sin copiar ni guardar, pregunta antes.
+- La imagen se exporta a resolución completa (Retina incluida).
+
+## Compilar en local
+
+Necesitas Xcode o las Command Line Tools (`xcode-select --install`).
 
 ```sh
-./build-app.sh
+./build-app.sh          # crea build/MacCap.app (universal)
 open build/MacCap.app
+swift test              # pruebas
 ```
 
-Opcionalmente, mueve `build/MacCap.app` a Aplicaciones. El icono de cámara aparece en la barra de menús; la aplicación no aparece en el Dock. Para iniciarla automáticamente, añádela a **Ajustes del Sistema → General → Ítems de inicio**. Usa **Salir de MacCap** para cerrarla.
-
-macOS puede solicitar permiso de grabación de pantalla. Concédelo en **Ajustes del Sistema → Privacidad y seguridad → Grabación de pantalla** (o **Grabación de pantalla y audio del sistema**) y vuelve a abrir la aplicación si es necesario. Al compilar de nuevo la aplicación puede ser necesario revisar el permiso. Las capturas se procesan localmente.
-
-## Uso
-
-Haz clic en el icono para guardar como PNG o copiar al portapapeles la pantalla principal, una zona o una ventana. En las capturas interactivas, arrastra para seleccionar una zona o haz clic en la ventana; Escape cancela. Para pantallas adicionales, selecciona una zona en la pantalla deseada.
-
-El menú permite activar un retardo de cinco segundos y, para la pantalla principal, incluir el cursor. La opción **Capturar zona y añadir rectángulos** abre un editor: arrastra sobre la imagen para dibujar rectángulos rojos, bórralos si lo necesitas y guarda o copia el resultado. Cerrar el editor descarta los cambios.
-
-## Pruebas
-
-```sh
-swift test
-```
+`MACCAP_NATIVE_ONLY=1 ./build-app.sh` compila solo para la arquitectura del Mac (más rápido).
