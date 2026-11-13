@@ -405,7 +405,7 @@ struct AnnotationHistory {
 // MARK: - Background for sharing
 
 /// Optional gradient frame around the exported image (padding, rounded corners and shadow).
-enum BackgroundStyle: Int, CaseIterable {
+enum ShareBackground: Int, CaseIterable {
     case none, ocean, sunset, forest, candy, graphite, light
 
     var title: String {

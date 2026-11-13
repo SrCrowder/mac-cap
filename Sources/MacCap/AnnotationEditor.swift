@@ -84,7 +84,7 @@ final class AnnotationImage {
 
     /// Draws the final picture: optional background, the (cropped) image and its annotations.
     /// The current context must be flipped, 1 unit = 1 output pixel.
-    func drawComposition(_ state: EditorState, background: BackgroundStyle) {
+    func drawComposition(_ state: EditorState, background: ShareBackground) {
         let visible = state.crop ?? CGRect(origin: .zero, size: pixelSize)
         let layout = background.layout(content: visible.size)
         let contentRect = CGRect(origin: layout.contentOrigin, size: visible.size)
@@ -238,7 +238,7 @@ final class AnnotationImage {
     }
 
     /// PNG with the annotations burnt in, keeping the original resolution and DPI.
-    func pngData(_ state: EditorState, background: BackgroundStyle) -> Data? {
+    func pngData(_ state: EditorState, background: ShareBackground) -> Data? {
         let visible = state.crop ?? CGRect(origin: .zero, size: pixelSize)
         let size = background.layout(content: visible.size).size
         guard size.width >= 1, size.height >= 1,
@@ -274,7 +274,7 @@ final class AnnotationCanvas: NSView, NSTextFieldDelegate {
     }
     var color = RGBA(r: 1, g: 0.18, b: 0.18) { didSet { applyStyleToSelection() } }
     var size: StrokeSize = .medium { didSet { applyStyleToSelection() } }
-    var background: BackgroundStyle = .none {
+    var background: ShareBackground = .none {
         didSet {
             commitText()
             needsDisplay = true
@@ -743,7 +743,7 @@ final class AnnotationWindowController: NSWindowController, NSWindowDelegate {
     private var clearButton: NSButton!
     /// Annotations at the last copy/save, to know if there are unsaved changes.
     private var exported = EditorState()
-    private var exportedBackground = BackgroundStyle.none
+    private var exportedBackground = ShareBackground.none
     private var hasUnexportedChanges: Bool {
         canvas.state != exported || canvas.background != exportedBackground
     }
@@ -835,7 +835,7 @@ final class AnnotationWindowController: NSWindowController, NSWindowDelegate {
         done.bezelColor = .controlAccentColor
         done.keyEquivalent = "\r"
         done.keyEquivalentModifierMask = [.command]
-        for style in BackgroundStyle.allCases { backgroundPopup.addItem(withTitle: style.title) }
+        for style in ShareBackground.allCases { backgroundPopup.addItem(withTitle: style.title) }
         backgroundPopup.target = self
         backgroundPopup.action = #selector(backgroundChanged)
         backgroundPopup.toolTip = "Fondo con margen y sombra para compartir"
@@ -913,7 +913,7 @@ final class AnnotationWindowController: NSWindowController, NSWindowDelegate {
     @objc private func toolChanged() { canvas.tool = AnnotationTool.allCases[toolControl.selectedSegment] }
     @objc private func colorChanged() { canvas.color = Self.palette[colorControl.selectedSegment].1 }
     @objc private func backgroundChanged() {
-        canvas.background = BackgroundStyle(rawValue: backgroundPopup.indexOfSelectedItem) ?? .none
+        canvas.background = ShareBackground(rawValue: backgroundPopup.indexOfSelectedItem) ?? .none
     }
     @objc private func sizeChanged() { canvas.size = StrokeSize(rawValue: sizeControl.selectedSegment) ?? .medium }
     @objc private func undo() { canvas.undo() }

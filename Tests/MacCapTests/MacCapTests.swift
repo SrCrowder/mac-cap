@@ -141,8 +141,8 @@ final class SelectionGeometryTests: XCTestCase {
     }
 
     func testBackgroundLayout() {
-        XCTAssertEqual(BackgroundStyle.none.layout(content: CGSize(width: 100, height: 50)).size, CGSize(width: 100, height: 50))
-        let layout = BackgroundStyle.ocean.layout(content: CGSize(width: 1000, height: 500))
+        XCTAssertEqual(ShareBackground.none.layout(content: CGSize(width: 100, height: 50)).size, CGSize(width: 100, height: 50))
+        let layout = ShareBackground.ocean.layout(content: CGSize(width: 1000, height: 500))
         XCTAssertEqual(layout.contentOrigin, CGPoint(x: 70, y: 70))
         XCTAssertEqual(layout.size, CGSize(width: 1140, height: 640))
     }
@@ -319,7 +319,7 @@ final class RenderingTests: XCTestCase {
         XCTAssertEqual(cropped.pixelsWide, 200)
         XCTAssertEqual(cropped.pixelsHigh, 100)
         let framed = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(document.pngData(state, background: .sunset))))
-        let layout = BackgroundStyle.sunset.layout(content: CGSize(width: 200, height: 100))
+        let layout = ShareBackground.sunset.layout(content: CGSize(width: 200, height: 100))
         XCTAssertEqual(framed.pixelsWide, Int(layout.size.width))
         // The corner is gradient (warm, not white or black).
         let corner = framed.colorAt(x: 2, y: 2)!.usingColorSpace(.deviceRGB)!
