@@ -129,6 +129,7 @@ final class AnnotationHistoryTests: XCTestCase {
 
 #if os(macOS)
 import AppKit
+import CoreImage
 
 final class RenderingTests: XCTestCase {
     /// A 400×300 px image (Retina-like: 200×150 pt) with black text-like stripes on white.
@@ -191,6 +192,25 @@ final class RenderingTests: XCTestCase {
         let edge = pixel(bitmap, 80, 10)
         XCTAssertGreaterThan(edge.redComponent, 0.8)
         XCTAssertLessThan(edge.greenComponent, 0.3)
+    }
+}
+
+    func testPixelatePipelineAveragesBlocks() throws {
+        let document = try makeDocument()
+        let cgImage = try XCTUnwrap(document.image.cgImage(forProposedRect: nil, context: nil, hints: nil))
+        let input = CIImage(cgImage: cgImage)
+        let context = CIContext()
+        for (offset, noise) in [(CGPoint.zero, false), (CGPoint(x: 13, y: 7), false), (CGPoint(x: 13, y: 7), true)] {
+            let output = AnnotationImage.pixelate(input, block: 44, offset: offset, noise: noise)
+            XCTAssertEqual(output.extent, input.extent)
+            let rep = NSBitmapImageRep(cgImage: try XCTUnwrap(context.createCGImage(output, from: output.extent)))
+            let values = [(50, 50), (260, 160), (300, 200)].map { rep.colorAt(x: $0.0, y: $0.1)!.redComponent }
+            print("pixelate offset=\(offset) noise=\(noise) ->", values)
+            for value in values {
+                XCTAssertGreaterThan(value, 0.2, "offset=\(offset) noise=\(noise)")
+                XCTAssertLessThan(value, 0.85, "offset=\(offset) noise=\(noise)")
+            }
+        }
     }
 }
 #endif

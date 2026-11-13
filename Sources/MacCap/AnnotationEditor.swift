@@ -31,35 +31,41 @@ final class AnnotationImage {
     }
 
     private func makePixelated() -> NSImage? {
-        guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil),
-              let filter = CIFilter(name: "CIPixellate") else { return nil }
-        let input = CIImage(cgImage: cgImage)
+        guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
         let block = AnnotationGeometry.pixelateBlock(for: pixelSize, scale: scale)
-        // CIPixellate samples one point per block; blurring first makes each block the area's average.
-        let averaged = input.clampedToExtent().applyingFilter("CIBoxBlur", parameters: [kCIInputRadiusKey: block / 2])
-        filter.setValue(averaged, forKey: kCIInputImageKey)
-        filter.setValue(block, forKey: kCIInputScaleKey)
         // Random grid offset so the block layout can't be predicted by de-pixelation tools.
-        filter.setValue(CIVector(x: CGFloat.random(in: 0..<block), y: CGFloat.random(in: 0..<block)),
-                        forKey: kCIInputCenterKey)
-        guard var output = filter.outputImage?.cropped(to: input.extent) else { return nil }
-        // Light per-pixel noise on top of the blocks.
-        if let noise = CIFilter(name: "CIRandomGenerator")?.outputImage?
-            .transformed(by: CGAffineTransform(translationX: CGFloat.random(in: 0..<1000), y: 0))
-            .cropped(to: input.extent)
-            .settingAlphaOne(in: input.extent)
-            .applyingFilter("CIColorMatrix", parameters: [
-                "inputRVector": CIVector(x: 0.12, y: 0, z: 0, w: 0),
-                "inputGVector": CIVector(x: 0, y: 0.12, z: 0, w: 0),
-                "inputBVector": CIVector(x: 0, y: 0, z: 0.12, w: 0),
-                "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 0),
-                "inputBiasVector": CIVector(x: -0.06, y: -0.06, z: -0.06, w: 1)
-            ]) {
-            output = noise.applyingFilter("CIAdditionCompositing", parameters: [kCIInputBackgroundImageKey: output])
-                .cropped(to: input.extent)
-        }
-        guard let result = CIContext().createCGImage(output, from: input.extent) else { return nil }
+        let offset = CGPoint(x: CGFloat.random(in: 0..<block), y: CGFloat.random(in: 0..<block))
+        let output = Self.pixelate(CIImage(cgImage: cgImage), block: block, offset: offset, noise: true)
+        guard let result = CIContext().createCGImage(output, from: output.extent) else { return nil }
         return NSImage(cgImage: result, size: pixelSize)
+    }
+
+    /// Mosaic where each block is the average colour of its area, plus optional light noise.
+    static func pixelate(_ input: CIImage, block: CGFloat, offset: CGPoint, noise: Bool) -> CIImage {
+        let extent = input.extent
+        // CIPixellate samples one point per block; blurring first makes each block the area's average.
+        let averaged = input.clampedToExtent()
+            .applyingFilter("CIBoxBlur", parameters: [kCIInputRadiusKey: block / 2])
+        var output = averaged
+            .applyingFilter("CIPixellate", parameters: [kCIInputScaleKey: block,
+                                                        kCIInputCenterKey: CIVector(x: offset.x, y: offset.y)])
+            .cropped(to: extent)
+        if noise, let random = CIFilter(name: "CIRandomGenerator")?.outputImage {
+            let grain = random
+                .transformed(by: CGAffineTransform(translationX: CGFloat.random(in: 0..<1000), y: 0))
+                .cropped(to: extent)
+                .settingAlphaOne(in: extent)
+                .applyingFilter("CIColorMatrix", parameters: [
+                    "inputRVector": CIVector(x: 0.12, y: 0, z: 0, w: 0),
+                    "inputGVector": CIVector(x: 0, y: 0.12, z: 0, w: 0),
+                    "inputBVector": CIVector(x: 0, y: 0, z: 0.12, w: 0),
+                    "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 0),
+                    "inputBiasVector": CIVector(x: -0.06, y: -0.06, z: -0.06, w: 0)
+                ])
+            output = grain.applyingFilter("CIAdditionCompositing", parameters: [kCIInputBackgroundImageKey: output])
+                .cropped(to: extent)
+        }
+        return output
     }
 
     /// Draws the image and annotations. The current context must be flipped, 1 unit = 1 image pixel.
