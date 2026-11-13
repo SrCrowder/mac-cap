@@ -209,6 +209,9 @@ final class RenderingTests: XCTestCase {
                 XCTAssertGreaterThan(value, 0.2, "offset=\(offset) noise=\(noise)")
                 XCTAssertLessThan(value, 0.85, "offset=\(offset) noise=\(noise)")
             }
+            // Within one 44 px block: flat without noise, varied with noise.
+            let row = Set((100..<130).map { Int(rep.colorAt(x: $0, y: 150)!.redComponent * 255) })
+            if noise { XCTAssertGreaterThan(row.count, 3, "noise has no effect") } else { XCTAssertLessThanOrEqual(row.count, 2) }
         }
     }
 }
