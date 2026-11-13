@@ -42,6 +42,23 @@ enum Settings {
         get { defaults.object(forKey: "keepHistory") as? Bool ?? true }
         set { defaults.set(newValue, forKey: "keepHistory") }
     }
+    /// User changes to the default shortcuts (`nil` value = shortcut removed).
+    static var shortcutOverrides: [ShortcutAction: Shortcut?] {
+        get {
+            guard let data = defaults.data(forKey: "shortcuts"),
+                  let raw = try? JSONDecoder().decode([String: Shortcut?].self, from: data) else { return [:] }
+            var result: [ShortcutAction: Shortcut?] = [:]
+            for (key, value) in raw {
+                if let action = ShortcutAction(rawValue: key) { result[action] = .some(value) }
+            }
+            return result
+        }
+        set {
+            let raw = Dictionary(uniqueKeysWithValues: newValue.map { ($0.key.rawValue, $0.value) })
+            defaults.set(try? JSONEncoder().encode(raw), forKey: "shortcuts")
+        }
+    }
+    static var shortcuts: [ShortcutAction: Shortcut] { ShortcutMap.resolve(shortcutOverrides) }
     static var suppressPermissionAlert: Bool {
         get { defaults.bool(forKey: "suppressPermissionAlert") }
         set { defaults.set(newValue, forKey: "suppressPermissionAlert") }
@@ -196,9 +213,6 @@ struct HotKey {
     let id: UInt32
     let keyCode: Int
     let carbonModifiers: Int
-    /// For displaying in menus.
-    let keyEquivalent: String
-    let modifierMask: NSEvent.ModifierFlags
     let action: () -> Void
 }
 

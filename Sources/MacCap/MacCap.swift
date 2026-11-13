@@ -59,14 +59,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         pin: { [weak self] url in self?.pinFile(at: url) },
         copy: { [weak self] url in self?.copyFile(at: url) }))
 
-    private lazy var hotKeys: [HotKey] = [
-        HotKey(id: 1, keyCode: kVK_ANSI_7, carbonModifiers: cmdKey | shiftKey, keyEquivalent: "7",
-               modifierMask: [.command, .shift]) { [weak self] in self?.capture(.selection, to: .annotate) },
-        HotKey(id: 2, keyCode: kVK_ANSI_8, carbonModifiers: cmdKey | shiftKey, keyEquivalent: "8",
-               modifierMask: [.command, .shift]) { [weak self] in self?.capture(.selection, to: .copy) },
-        HotKey(id: 3, keyCode: kVK_ANSI_9, carbonModifiers: cmdKey | shiftKey, keyEquivalent: "9",
-               modifierMask: [.command, .shift]) { [weak self] in self?.capture(.selection, to: .text) }
-    ]
+    private var actionItems: [ShortcutAction: NSMenuItem] = [:]
+    private var shortcutsWindow: ShortcutsWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         installMainMenu()
@@ -97,19 +91,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(permissionSeparator)
 
         menu.addItem(header("Copiar al portapapeles"))
-        menu.addItem(item("Zona…", #selector(copySelection), hotKey: hotKeys[1], symbol: "rectangle.dashed"))
-        menu.addItem(item("Ventana…", #selector(copyWindow), symbol: "macwindow"))
-        menu.addItem(item("Pantalla completa", #selector(copyScreen), symbol: "display"))
+        menu.addItem(item("Zona…", #selector(copySelection), action: .copyZone, symbol: "rectangle.dashed"))
+        menu.addItem(item("Ventana…", #selector(copyWindow), action: .copyWindow, symbol: "macwindow"))
+        menu.addItem(item("Pantalla completa", #selector(copyScreen), action: .copyScreen, symbol: "display"))
         menu.addItem(.separator())
 
         menu.addItem(header("Guardar en archivo"))
-        menu.addItem(item("Zona…", #selector(saveSelection), symbol: "rectangle.dashed"))
+        menu.addItem(item("Zona…", #selector(saveSelection), action: .saveZone, symbol: "rectangle.dashed"))
         menu.addItem(item("Ventana…", #selector(saveWindow), symbol: "macwindow"))
         menu.addItem(item("Pantalla completa", #selector(saveScreen), symbol: "display"))
         menu.addItem(.separator())
 
         menu.addItem(header("Anotar (formas, flechas, texto…)"))
-        menu.addItem(item("Zona y anotar…", #selector(annotateSelection), hotKey: hotKeys[0], symbol: "pencil.and.outline"))
+        menu.addItem(item("Zona y anotar…", #selector(annotateSelection), action: .annotateZone, symbol: "pencil.and.outline"))
         menu.addItem(item("Ventana y anotar…", #selector(annotateWindow), symbol: "macwindow.badge.plus"))
         menu.addItem(item("Pantalla completa y anotar", #selector(annotateScreen), symbol: "display"))
         menu.addItem(item("Anotar imagen del portapapeles", #selector(annotateClipboard), symbol: "doc.on.clipboard"))
@@ -117,17 +111,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(.separator())
 
         menu.addItem(header("Extras"))
-        menu.addItem(item("Copiar texto de una zona (OCR)…", #selector(recognizeText), hotKey: hotKeys[2], symbol: "text.viewfinder"))
-        menu.addItem(item("Leer código QR de una zona…", #selector(readQRCode), symbol: "qrcode.viewfinder"))
-        menu.addItem(item("Fijar zona en pantalla…", #selector(pinSelection), symbol: "pin"))
-        menu.addItem(item("Cuentagotas (copiar color)…", #selector(pickColor), symbol: "eyedropper"))
+        menu.addItem(item("Copiar texto de una zona (OCR)…", #selector(recognizeText), action: .ocr, symbol: "text.viewfinder"))
+        menu.addItem(item("Leer código QR de una zona…", #selector(readQRCode), action: .qr, symbol: "qrcode.viewfinder"))
+        menu.addItem(item("Fijar zona en pantalla…", #selector(pinSelection), action: .pinZone, symbol: "pin"))
+        menu.addItem(item("Cuentagotas (copiar color)…", #selector(pickColor), action: .colorPicker, symbol: "eyedropper"))
         menu.addItem(.separator())
 
         menu.addItem(header("Grabar y medir"))
-        menu.addItem(item("Grabar zona en vídeo (MP4)…", #selector(recordVideo), symbol: "record.circle"))
-        menu.addItem(item("Grabar zona como GIF…", #selector(recordGIF), symbol: "film"))
-        menu.addItem(item("Captura con scroll…", #selector(startScrollCapture), symbol: "arrow.down.doc"))
-        menu.addItem(item("Regla…", #selector(showRuler), symbol: "ruler"))
+        menu.addItem(item("Grabar zona en vídeo (MP4)…", #selector(recordVideo), action: .recordVideo, symbol: "record.circle"))
+        menu.addItem(item("Grabar zona como GIF…", #selector(recordGIF), action: .recordGIF, symbol: "film"))
+        menu.addItem(item("Captura con scroll…", #selector(startScrollCapture), action: .scrollCapture, symbol: "arrow.down.doc"))
+        menu.addItem(item("Regla…", #selector(showRuler), action: .ruler, symbol: "ruler"))
         menu.addItem(item("Herramienta nativa de macOS…", #selector(openNativeToolbar), symbol: "camera.aperture"))
         menu.addItem(.separator())
         menu.addItem(item("Abrir carpeta de capturas", #selector(openSaveFolder), symbol: "folder"))
@@ -195,8 +189,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(historyItem)
         menu.addItem(.separator())
 
-        hotKeysItem = item("Atajos globales (⇧⌘7, ⇧⌘8, ⇧⌘9)", #selector(toggleHotKeys))
+        hotKeysItem = item("Activar atajos de teclado globales", #selector(toggleHotKeys))
         menu.addItem(hotKeysItem)
+        menu.addItem(item("Configurar atajos…", #selector(openShortcuts), symbol: "keyboard"))
         loginItem = item("Abrir al iniciar sesión", #selector(toggleLoginItem))
         loginItem.isHidden = !LoginItem.isSupported
         menu.addItem(loginItem)
@@ -221,6 +216,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         folderItem.title = "Guardar en: \(FileManager.default.displayName(atPath: Settings.saveFolder.path))…"
         hotKeysItem.state = Settings.hotKeys ? .on : .off
         loginItem.state = LoginItem.isEnabled ? .on : .off
+        refreshMenuShortcuts()
         autoUpdateItem.state = updater.installsAutomatically ? .on : .off
         let format = Settings.format
         formatItems.forEach { $0.state = ($0.representedObject as? String) == format.rawValue ? .on : .off }
@@ -283,12 +279,60 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return thumbnail
     }
 
-    private func item(_ title: String, _ action: Selector, hotKey: HotKey? = nil, symbol: String? = nil) -> NSMenuItem {
-        let item = NSMenuItem(title: title, action: action, keyEquivalent: hotKey?.keyEquivalent ?? "")
-        if let hotKey = hotKey { item.keyEquivalentModifierMask = hotKey.modifierMask }
+    private func item(_ title: String, _ selector: Selector, action: ShortcutAction? = nil,
+                      symbol: String? = nil) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: selector, keyEquivalent: "")
         if let symbol = symbol { item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) }
         item.target = self
+        if let action = action { actionItems[action] = item }
         return item
+    }
+
+    /// Shows each action's shortcut next to its menu item.
+    private func refreshMenuShortcuts() {
+        let shortcuts = Settings.hotKeys ? Settings.shortcuts : [:]
+        for (action, item) in actionItems {
+            if let shortcut = shortcuts[action], let key = shortcut.menuKeyEquivalent {
+                item.keyEquivalent = key
+                item.keyEquivalentModifierMask = shortcut.modifierMask
+            } else {
+                item.keyEquivalent = ""
+                item.keyEquivalentModifierMask = []
+            }
+        }
+    }
+
+    private func perform(_ action: ShortcutAction) {
+        switch action {
+        case .annotateZone: capture(.selection, to: .annotate)
+        case .copyZone: capture(.selection, to: .copy)
+        case .saveZone: capture(.selection, to: .save)
+        case .ocr: capture(.selection, to: .text)
+        case .qr: capture(.selection, to: .qr)
+        case .pinZone: capture(.selection, to: .pin)
+        case .copyWindow: capture(.window, to: .copy)
+        case .copyScreen: capture(.screen, to: .copy)
+        case .colorPicker: pickColor()
+        case .recordVideo: startRecording(gif: false)
+        case .recordGIF: startRecording(gif: true)
+        case .scrollCapture: startScrollCapture()
+        case .ruler: showRuler()
+        }
+    }
+
+    @objc private func openShortcuts() {
+        if shortcutsWindow == nil {
+            let controller = ShortcutsWindowController()
+            controller.onClose = { [weak self] in
+                self?.shortcutsWindow = nil
+                self?.applyHotKeys(reportFailures: true)
+            }
+            shortcutsWindow = controller
+            HotKeyCenter.shared.unregisterAll() // so the combinations can be typed in the window
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        shortcutsWindow?.showWindow(nil)
+        shortcutsWindow?.window?.makeKeyAndOrderFront(nil)
     }
 
     private func header(_ title: String) -> NSMenuItem {
@@ -706,14 +750,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if panel.runModal() == .OK, let url = panel.url { Settings.saveFolder = url }
     }
 
-    private func applyHotKeys() {
-        guard Settings.hotKeys else {
+    private func applyHotKeys(reportFailures: Bool = false) {
+        guard Settings.hotKeys, shortcutsWindow == nil else {
             HotKeyCenter.shared.unregisterAll()
             return
         }
-        let failed = HotKeyCenter.shared.register(hotKeys)
-        if !failed.isEmpty {
-            NSLog("MacCap: no se pudieron registrar los atajos %@", failed.map(String.init).joined(separator: ", "))
+        let shortcuts = Settings.shortcuts
+        let actions = ShortcutAction.allCases.filter { shortcuts[$0] != nil }
+        let hotKeys = actions.enumerated().map { index, action -> HotKey in
+            let shortcut = shortcuts[action]!
+            return HotKey(id: UInt32(index + 1), keyCode: shortcut.keyCode, carbonModifiers: shortcut.carbonModifiers) {
+                [weak self] in self?.perform(action)
+            }
+        }
+        let failed = HotKeyCenter.shared.register(hotKeys).compactMap { id -> String? in
+            let index = Int(id) - 1
+            guard actions.indices.contains(index), let shortcut = shortcuts[actions[index]] else { return nil }
+            return "\(shortcut.displayString) (\(actions[index].title))"
+        }
+        guard !failed.isEmpty else { return }
+        NSLog("MacCap: no se pudieron registrar los atajos %@", failed.joined(separator: ", "))
+        if reportFailures {
+            showError("Otra aplicación ya usa estas combinaciones:\n\(failed.joined(separator: "\n"))\n\nElige otras en Opciones → Configurar atajos.",
+                      title: "Algunos atajos no están disponibles")
         }
     }
 

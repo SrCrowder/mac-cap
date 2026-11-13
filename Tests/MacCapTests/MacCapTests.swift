@@ -435,3 +435,37 @@ final class GIFExporterTests: XCTestCase {
     }
 }
 #endif
+
+final class ShortcutTests: XCTestCase {
+    func testDefaultsAndDisplay() {
+        let resolved = ShortcutMap.resolve([:])
+        XCTAssertEqual(resolved[.annotateZone]?.displayString, "⇧⌘7")
+        XCTAssertNil(resolved[.ruler])
+    }
+
+    func testAssignRemovesDuplicatesAndAllowsClearing() {
+        let shiftCmd8 = ShortcutMap.defaults[.copyZone]!
+        var overrides = ShortcutMap.assign(shiftCmd8, to: .ruler, in: [:])
+        var resolved = ShortcutMap.resolve(overrides)
+        XCTAssertEqual(resolved[.ruler], shiftCmd8)
+        XCTAssertNil(resolved[.copyZone], "the old owner loses it")
+        overrides = ShortcutMap.assign(nil, to: .annotateZone, in: overrides)
+        resolved = ShortcutMap.resolve(overrides)
+        XCTAssertNil(resolved[.annotateZone])
+        XCTAssertEqual(resolved[.ocr], ShortcutMap.defaults[.ocr])
+    }
+
+    func testValidity() {
+        XCTAssertFalse(Shortcut(keyCode: 0, key: "a").isValidGlobal)
+        XCTAssertTrue(Shortcut(keyCode: 0, option: true, key: "a").isValidGlobal)
+        XCTAssertTrue(Shortcut(keyCode: 96, key: "F5").isValidGlobal)
+    }
+
+    func testOverridesRoundTripThroughJSON() throws {
+        let overrides: [ShortcutAction: Shortcut?] = [.ruler: Shortcut(keyCode: 15, control: true, key: "r"), .ocr: nil]
+        let data = try JSONEncoder().encode(Dictionary(uniqueKeysWithValues: overrides.map { ($0.key.rawValue, $0.value) }))
+        let decoded = try JSONDecoder().decode([String: Shortcut?].self, from: data)
+        XCTAssertEqual(decoded["ruler"], .some(Shortcut(keyCode: 15, control: true, key: "r")))
+        XCTAssertEqual(decoded["ocr"], .some(nil))
+    }
+}

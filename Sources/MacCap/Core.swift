@@ -442,3 +442,86 @@ enum ShareBackground: Int, CaseIterable {
                 CGPoint(x: padding, y: padding))
     }
 }
+
+// MARK: - Keyboard shortcuts
+
+/// Actions that can have a global keyboard shortcut.
+enum ShortcutAction: String, CaseIterable, Codable {
+    case annotateZone, copyZone, saveZone, ocr, qr, pinZone, copyWindow, copyScreen,
+         colorPicker, recordVideo, recordGIF, scrollCapture, ruler
+
+    var title: String {
+        switch self {
+        case .annotateZone: return "Capturar zona y anotar"
+        case .copyZone: return "Capturar zona y copiar"
+        case .saveZone: return "Capturar zona y guardar"
+        case .ocr: return "Copiar texto de una zona (OCR)"
+        case .qr: return "Leer código QR"
+        case .pinZone: return "Fijar zona en pantalla"
+        case .copyWindow: return "Capturar ventana y copiar"
+        case .copyScreen: return "Capturar pantalla completa y copiar"
+        case .colorPicker: return "Cuentagotas"
+        case .recordVideo: return "Grabar zona en vídeo"
+        case .recordGIF: return "Grabar zona como GIF"
+        case .scrollCapture: return "Captura con scroll"
+        case .ruler: return "Regla"
+        }
+    }
+}
+
+struct Shortcut: Codable, Equatable, Hashable {
+    /// Virtual key code (kVK_*).
+    var keyCode: Int
+    var command = false
+    var shift = false
+    var option = false
+    var control = false
+    /// Label of the key, e.g. "7" or "F5".
+    var key: String
+
+    var displayString: String {
+        (control ? "⌃" : "") + (option ? "⌥" : "") + (shift ? "⇧" : "") + (command ? "⌘" : "") + key.uppercased()
+    }
+
+    /// Global shortcuts need ⌘, ⌥ or ⌃ (or a function key) so normal typing isn't swallowed.
+    var isValidGlobal: Bool { command || option || control || Shortcut.functionKeys[keyCode] != nil }
+
+    /// Function keys and other keys without a printable character.
+    static let functionKeys: [Int: String] = [
+        122: "F1", 120: "F2", 99: "F3", 118: "F4", 96: "F5", 97: "F6", 98: "F7", 100: "F8",
+        101: "F9", 109: "F10", 103: "F11", 111: "F12", 105: "F13", 107: "F14", 113: "F15"
+    ]
+    static let namedKeys: [Int: String] = [
+        49: "Espacio", 36: "↩", 48: "⇥", 51: "⌫", 117: "⌦", 123: "←", 124: "→", 125: "↓", 126: "↑",
+        115: "Inicio", 119: "Fin", 116: "RePág", 121: "AvPág"
+    ]
+}
+
+/// Default shortcuts plus the user's changes. `overrides` maps an action to its shortcut,
+/// or to `nil` when the user removed it.
+enum ShortcutMap {
+    static let defaults: [ShortcutAction: Shortcut] = [
+        .annotateZone: Shortcut(keyCode: 26, command: true, shift: true, key: "7"),
+        .copyZone: Shortcut(keyCode: 28, command: true, shift: true, key: "8"),
+        .ocr: Shortcut(keyCode: 25, command: true, shift: true, key: "9")
+    ]
+
+    static func resolve(_ overrides: [ShortcutAction: Shortcut?]) -> [ShortcutAction: Shortcut] {
+        var result = defaults
+        for (action, shortcut) in overrides { result[action] = shortcut }
+        return result
+    }
+
+    /// Assigns `shortcut` to `action`, removing it from any other action that used it.
+    static func assign(_ shortcut: Shortcut?, to action: ShortcutAction,
+                       in overrides: [ShortcutAction: Shortcut?]) -> [ShortcutAction: Shortcut?] {
+        var updated = overrides
+        if let shortcut = shortcut {
+            for (other, existing) in resolve(overrides) where other != action && existing == shortcut {
+                updated[other] = .some(nil)
+            }
+        }
+        updated[action] = .some(shortcut)
+        return updated
+    }
+}
